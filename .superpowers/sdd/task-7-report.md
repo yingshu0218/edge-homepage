@@ -73,3 +73,32 @@ git diff --check                 passed
 - The default `aurora.webp` and final 128 px icon were inspected directly with `view_image`; the theme preserves high-contrast negative space for the left command surface and visual interest on the right.
 - The in-app Browser runtime reported that no browser was available after the local Vite server was started. There was no locally installed Playwright/Chromium fallback, so a browser-rendered screenshot and native-size side-by-side `view_image` comparison could not be produced in this environment. Automated DOM workflow tests cover loading, remote hydration, offline recovery, bookmark creation, settings/theme reachability; this limitation should be closed by loading `dist/` as an unpacked extension in Edge for final visual sign-off.
 - The visible above-the-fold copy matches the approved structure except the sync provider label is intentionally “Microsoft” instead of the obsolete GitHub label, reflecting the final product decision.
+
+## Review hardening pass
+
+Review-fix commit: `af10e343e2c592b18108f12dbfb6dd7f9b35e78d`
+
+### Root causes reproduced
+
+- Reset and replace-import only changed the JSON snapshot; the custom image lived independently in IndexedDB and therefore survived.
+- `EdgeSyncProvider.flush()` performed `set()` and obsolete-key `remove()` as separately observable operations. A subscriber could pull after `set()` but before `remove()`, merge old records, and save them back.
+- Subscription pulls were not lifecycle- or generation-guarded, so an old or post-unmount result could still save and update state.
+- A rejected local write escaped the event handler as an unhandled rejection.
+
+### RED/GREEN coverage added
+
+- RED: reset did not call `BackgroundStore.clear()`; GREEN: background clear is awaited before resetting and the in-memory object URL source is removed.
+- RED: replace import preserved `useCustomBackground: true`; GREEN: replace clears the local blob and forces the imported snapshot back to a built-in background.
+- RED: an emitting fake Chrome store produced two subscriber observations, the first containing obsolete records; GREEN: provider self-notifications are deferred across the complete set/remove batch and emitted once after a successful stable write.
+- RED: a rejected coordinator write produced an unhandled rejection; GREEN: the app displays a recoverable `保存失败` sync state.
+- RED: a subscription result finishing after unmount saved data; GREEN: active lifecycle + generation + serial latest-only queue prevents stale saves and state updates.
+- Added an App-level integration test composed with the real `EdgeSyncProvider`, real `SyncCoordinator`, emitting fake Chrome storage/onChanged, fake local repository, and fake background store. Reset removes the remote obsolete bookmark, does not re-render it, persists the smaller local snapshot, and clears the background.
+
+Final review-pass verification:
+
+```text
+npm test                         14 files, 69 tests passed
+npm run build                    passed
+node manifest/package validator  passed
+git diff --check                 passed
+```
