@@ -25,6 +25,14 @@ describe('snapshot transfer', () => {
     );
   });
 
+  it('requires exportedAt to be a canonical ISO timestamp', () => {
+    const snapshot = createDefaultSnapshot();
+    for (const exportedAt of ['0', '2026-07-16', '2026-07-16T01:02:03Z']) {
+      expect(() => parseSnapshot(JSON.stringify({ app: 'day-start', exportedAt, snapshot }))).toThrow('Invalid backup');
+    }
+    expect(() => parseSnapshot(JSON.stringify({ app: 'day-start', exportedAt: '2026-07-16T01:02:03.000Z', snapshot }))).not.toThrow();
+  });
+
   it('rejects invalid bookmark URLs, empty IDs, and dangling group references', () => {
     const invalidUrl = createDefaultSnapshot();
     invalidUrl.bookmarks[0]!.url = 'javascript:alert(1)';

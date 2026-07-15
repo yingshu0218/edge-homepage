@@ -87,6 +87,14 @@ export function parseSnapshot(text: string): AppSnapshot {
   // Recognize the schema first so old/new backups fail with the actionable error.
   if (object(value) && 'schemaVersion' in value) return validateSnapshot(value);
   if (!object(value) || !exactKeys(value, ['app', 'exportedAt', 'snapshot']) || value.app !== 'day-start'
-    || !string(value.exportedAt) || !Number.isFinite(Date.parse(value.exportedAt))) throw new Error('Invalid backup');
+    || !string(value.exportedAt) || !canonicalIsoTimestamp(value.exportedAt)) throw new Error('Invalid backup');
   return validateSnapshot(value.snapshot);
+}
+
+function canonicalIsoTimestamp(value: string): boolean {
+  try {
+    return new Date(value).toISOString() === value;
+  } catch {
+    return false;
+  }
 }

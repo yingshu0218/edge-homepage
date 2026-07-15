@@ -30,6 +30,24 @@ describe('SettingsPanel', () => {
     expect(onThemeParametersChange).toHaveBeenCalledWith({ overlay: 0.5, blur: 8 });
   });
 
+  it('tracks imported preference props without writing a stale sibling value', () => {
+    const onThemeParametersChange = vi.fn();
+    const snapshot = createDefaultSnapshot();
+    const { rerender } = render(
+      <SettingsPanel snapshot={snapshot} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={onThemeParametersChange} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />,
+    );
+
+    const imported = { ...snapshot, settings: { ...snapshot.settings, overlay: 0.7, blur: 12 } };
+    rerender(
+      <SettingsPanel snapshot={imported} syncState={{ kind: 'synced', at: 1 }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={onThemeParametersChange} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />,
+    );
+    expect(screen.getByLabelText('遮罩强度')).toHaveValue('0.7');
+    expect(screen.getByLabelText('模糊强度')).toHaveValue('12');
+
+    fireEvent.change(screen.getByLabelText('遮罩强度'), { target: { value: '0.8' } });
+    expect(onThemeParametersChange).toHaveBeenLastCalledWith({ overlay: 0.8, blur: 12 });
+  });
+
   it('imports a chosen file using replace or merge mode', async () => {
     const onImport = vi.fn().mockResolvedValue(undefined);
     render(

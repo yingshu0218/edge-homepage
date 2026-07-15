@@ -1,4 +1,4 @@
-import { useId, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useState, type ChangeEvent } from 'react';
 
 import type { AppSnapshot } from '../../domain/models';
 import type { SyncState } from '../../sync/types';
@@ -31,6 +31,10 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
   const [mode, setMode] = useState<ImportMode>('replace');
   const [parameters, setParameters] = useState({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    setParameters({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
+  }, [snapshot.settings.overlay, snapshot.settings.blur]);
 
   const changeParameter = (name: 'overlay' | 'blur', value: number) => {
     const next = { ...parameters, [name]: value };
