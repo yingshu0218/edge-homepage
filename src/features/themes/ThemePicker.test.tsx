@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BackgroundStore } from '../../storage/backgroundStore';
-import { ThemePicker, validateBackgroundFile } from './ThemePicker';
+import { processCustomBackground, ThemePicker, validateBackgroundFile } from './ThemePicker';
 
 afterEach(cleanup);
 
@@ -42,5 +42,60 @@ describe('custom background upload', () => {
 
     await waitFor(() => expect(store.put).toHaveBeenCalled());
     expect(onCustomBackgroundChange).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('processCustomBackground', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('scales the longest edge to 2560 and encodes WebP through canvas', async () => {
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 5120, height: 2880, close }));
+    const drawImage = vi.fn();
+    const toBlob = vi.fn((callback: BlobCallback, type?: string) => {
+      expect(type).toBe('image/webp');
+      callback(new Blob(['encoded'], { type: 'image/webp' }));
+    });
+    const canvas = { width: 0, height: 0, getContext: vi.fn(() => ({ drawImage })), toBlob };
+    vi.spyOn(document, 'createElement').mockReturnValue(canvas as unknown as HTMLCanvasElement);
+
+    const result = await processCustomBackground(new File(['raw'], 'wide.png', { type: 'image/png' }));
+
+    expect(canvas).toMatchObject({ width: 2560, height: 1440 });
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 2560, 1440);
+    expect(result.type).toBe('image/webp');
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('fails clearly when a 2D canvas context is unavailable', async () => {
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 800, height: 600, close }));
+    const canvas = { width: 0, height: 0, getContext: vi.fn(() => null) };
+    vi.spyOn(document, 'createElement').mockReturnValue(canvas as unknown as HTMLCanvasElement);
+
+    await expect(processCustomBackground(new File(['raw'], 'scene.png', { type: 'image/png' }))).rejects.toThrow(
+      '当前浏览器无法处理该图片',
+    );
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('fails clearly when WebP encoding returns no blob', async () => {
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 800, height: 600, close }));
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+      toBlob: vi.fn((callback: BlobCallback) => callback(null)),
+    };
+    vi.spyOn(document, 'createElement').mockReturnValue(canvas as unknown as HTMLCanvasElement);
+
+    await expect(processCustomBackground(new File(['raw'], 'scene.webp', { type: 'image/webp' }))).rejects.toThrow(
+      '图片压缩失败',
+    );
+    expect(close).toHaveBeenCalled();
   });
 });

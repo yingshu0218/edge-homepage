@@ -8,7 +8,9 @@ export type ResolvedTheme = Omit<ThemeDefinition, 'defaultAppearance'> & {
 };
 
 export function resolveTheme(settings: AppSettings, customBackground?: Blob): ResolvedTheme {
-  const selected = findBuiltInTheme(settings.themeId) ?? DEFAULT_THEME;
+  const selected = settings.useCustomBackground && !customBackground
+    ? DEFAULT_THEME
+    : (findBuiltInTheme(settings.themeId) ?? DEFAULT_THEME);
 
   if (settings.useCustomBackground && customBackground) {
     return {

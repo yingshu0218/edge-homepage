@@ -10,6 +10,16 @@ describe('resolveTheme', () => {
     expect(resolveTheme(settings, undefined).id).toBe('aurora');
   });
 
+  it('falls back to aurora when a selected non-default theme loses its custom background', () => {
+    const settings = {
+      ...createDefaultSnapshot().settings,
+      themeId: 'ember',
+      useCustomBackground: true,
+    };
+
+    expect(resolveTheme(settings, undefined).id).toBe('aurora');
+  });
+
   it('resolves a selected built-in theme and keeps setting overrides', () => {
     const settings = {
       ...createDefaultSnapshot().settings,
