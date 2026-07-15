@@ -2,6 +2,13 @@ import type { AppSnapshot, Bookmark, BookmarkGroup } from '../../domain/models';
 
 type NewBookmark = Pick<Bookmark, 'id' | 'title' | 'url' | 'groupId'> & { now?: number };
 
+function withGroupOrder(bookmarks: Bookmark[], groupId: string, orderedIds: string[]): Bookmark[] {
+  const orders = new Map(orderedIds.map((id, order) => [id, order]));
+  return bookmarks.map((bookmark) => bookmark.groupId === groupId && orders.has(bookmark.id)
+    ? { ...bookmark, order: orders.get(bookmark.id)! }
+    : bookmark);
+}
+
 export function filterBookmarksByGroup(snapshot: AppSnapshot, groupId: string): Bookmark[] {
   return snapshot.bookmarks
     .filter((bookmark) => bookmark.groupId === groupId && bookmark.deletedAt === undefined)
@@ -10,12 +17,22 @@ export function filterBookmarksByGroup(snapshot: AppSnapshot, groupId: string): 
 
 export function addBookmark(snapshot: AppSnapshot, input: NewBookmark): AppSnapshot {
   const { now = Date.now(), ...bookmark } = input;
-  const order = filterBookmarksByGroup(snapshot, bookmark.groupId).length;
-  return { ...snapshot, bookmarks: [...snapshot.bookmarks, { ...bookmark, order, createdAt: now, updatedAt: now }] };
+  const existingIds = filterBookmarksByGroup(snapshot, bookmark.groupId).map(({ id }) => id);
+  const added = { ...bookmark, order: existingIds.length, createdAt: now, updatedAt: now };
+  return { ...snapshot, bookmarks: withGroupOrder([...snapshot.bookmarks, added], bookmark.groupId, [...existingIds, bookmark.id]) };
 }
 
 export function editBookmark(snapshot: AppSnapshot, id: string, changes: Partial<Pick<Bookmark, 'title' | 'url' | 'groupId'>>, now = Date.now()): AppSnapshot {
-  return { ...snapshot, bookmarks: snapshot.bookmarks.map((bookmark) => bookmark.id === id ? { ...bookmark, ...changes, updatedAt: now } : bookmark) };
+  const current = snapshot.bookmarks.find((bookmark) => bookmark.id === id && bookmark.deletedAt === undefined);
+  if (!current || !changes.groupId || changes.groupId === current.groupId) {
+    return { ...snapshot, bookmarks: snapshot.bookmarks.map((bookmark) => bookmark.id === id ? { ...bookmark, ...changes, updatedAt: now } : bookmark) };
+  }
+  const sourceIds = filterBookmarksByGroup(snapshot, current.groupId).filter((bookmark) => bookmark.id !== id).map(({ id }) => id);
+  const targetIds = filterBookmarksByGroup(snapshot, changes.groupId).map(({ id }) => id);
+  let bookmarks = snapshot.bookmarks.map((bookmark) => bookmark.id === id ? { ...bookmark, ...changes, order: targetIds.length, updatedAt: now } : bookmark);
+  bookmarks = withGroupOrder(bookmarks, current.groupId, sourceIds);
+  bookmarks = withGroupOrder(bookmarks, changes.groupId, [...targetIds, id]);
+  return { ...snapshot, bookmarks };
 }
 
 export function deleteBookmark(snapshot: AppSnapshot, id: string, now = Date.now()): AppSnapshot {
@@ -32,14 +49,19 @@ export function editGroup(snapshot: AppSnapshot, id: string, name: string, now =
 }
 
 export function deleteGroup(snapshot: AppSnapshot, id: string, destinationGroupId: string, now = Date.now()): AppSnapshot {
-  const destination = filterBookmarksByGroup(snapshot, destinationGroupId);
-  let order = destination.length;
+  const destinationGroup = snapshot.groups.find((group) => group.id === destinationGroupId && group.deletedAt === undefined);
+  const sourceGroup = snapshot.groups.find((group) => group.id === id && group.deletedAt === undefined);
+  if (!sourceGroup || !destinationGroup || id === destinationGroupId) throw new RangeError('A different active destination group is required.');
+  const destinationIds = filterBookmarksByGroup(snapshot, destinationGroupId).map(({ id }) => id);
+  const sourceIds = filterBookmarksByGroup(snapshot, id).map(({ id }) => id);
+  const mergedIds = [...destinationIds, ...sourceIds];
+  const moved = snapshot.bookmarks.map((bookmark) => bookmark.groupId === id && bookmark.deletedAt === undefined
+    ? { ...bookmark, groupId: destinationGroupId, updatedAt: now }
+    : bookmark);
   return {
     ...snapshot,
     groups: snapshot.groups.map((group) => group.id === id ? { ...group, deletedAt: now, updatedAt: now } : group),
-    bookmarks: snapshot.bookmarks.map((bookmark) => bookmark.groupId === id && bookmark.deletedAt === undefined
-      ? { ...bookmark, groupId: destinationGroupId, order: order++, updatedAt: now }
-      : bookmark),
+    bookmarks: withGroupOrder(moved, destinationGroupId, mergedIds),
   };
 }
 

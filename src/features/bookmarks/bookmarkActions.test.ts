@@ -54,4 +54,55 @@ describe('bookmark actions', () => {
     expect(next.bookmarks.every(({ groupId }) => groupId === 'other')).toBe(true);
     expect(next.bookmarks.map(({ order }) => order)).toEqual([0, 1, 2, 3]);
   });
+
+  it('appends a bookmark after sparse order values and normalizes the group', () => {
+    const source = createDefaultSnapshot();
+    source.bookmarks[0]!.order = 10;
+    source.bookmarks[1]!.order = 30;
+
+    const next = addBookmark(source, {
+      id: 'react', title: 'React', url: 'https://react.dev/', groupId: 'development', now: 10,
+    });
+
+    expect(filterBookmarksByGroup(next, 'development').map(({ id, order }) => [id, order])).toEqual([
+      ['stackoverflow', 0], ['npm', 1], ['github', 2], ['mdn', 3], ['react', 4],
+    ]);
+  });
+
+  it('reorders both groups when editing a bookmark into another group', () => {
+    const source = createDefaultSnapshot();
+    source.groups.push({ id: 'other', name: 'Other', order: 1, updatedAt: 0 });
+    source.bookmarks.push({ id: 'news', title: 'News', url: 'https://news.test/', groupId: 'other', order: 8, createdAt: 0, updatedAt: 0 });
+
+    const next = editBookmark(source, 'mdn', { groupId: 'other' }, 20);
+
+    expect(filterBookmarksByGroup(next, 'development').map(({ id, order }) => [id, order])).toEqual([
+      ['github', 0], ['stackoverflow', 1], ['npm', 2],
+    ]);
+    expect(filterBookmarksByGroup(next, 'other').map(({ id, order }) => [id, order])).toEqual([
+      ['news', 0], ['mdn', 1],
+    ]);
+  });
+
+  it('validates a group deletion destination', () => {
+    const source = createDefaultSnapshot();
+    source.groups.push({ id: 'deleted', name: 'Deleted', order: 1, updatedAt: 0, deletedAt: 1 });
+
+    expect(() => deleteGroup(source, 'development', 'missing')).toThrow(RangeError);
+    expect(() => deleteGroup(source, 'development', 'deleted')).toThrow(RangeError);
+    expect(() => deleteGroup(source, 'development', 'development')).toThrow(RangeError);
+  });
+
+  it('merges groups into one contiguous stable order', () => {
+    const source = createDefaultSnapshot();
+    source.groups.push({ id: 'other', name: 'Other', order: 1, updatedAt: 0 });
+    source.bookmarks[0]!.order = 20;
+    source.bookmarks.push({ id: 'news', title: 'News', url: 'https://news.test/', groupId: 'other', order: 50, createdAt: 0, updatedAt: 0 });
+
+    const next = deleteGroup(source, 'development', 'other', 50);
+
+    expect(filterBookmarksByGroup(next, 'other').map(({ id, order }) => [id, order])).toEqual([
+      ['news', 0], ['mdn', 1], ['stackoverflow', 2], ['npm', 3], ['github', 4],
+    ]);
+  });
 });

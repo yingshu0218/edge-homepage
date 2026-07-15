@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createRef } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { BookmarkDialog } from './BookmarkDialog';
 
@@ -26,4 +27,43 @@ it('shows an error and does not save an unsafe URL', async () => {
 
   expect(screen.getByRole('alert')).toHaveTextContent('valid HTTP or HTTPS URL');
   expect(onSave).not.toHaveBeenCalled();
+});
+
+it('focuses the title, traps tab focus, closes on Escape, and restores the trigger', async () => {
+  const triggerRef = createRef<HTMLButtonElement>();
+  const onClose = vi.fn();
+  const { rerender } = render(
+    <>
+      <button ref={triggerRef}>Add</button>
+      <BookmarkDialog open={false} groups={groups} searchTemplate="https://search.test/?q=%s" onSave={vi.fn()} onClose={onClose} returnFocusRef={triggerRef} />
+    </>,
+  );
+  triggerRef.current!.focus();
+  rerender(
+    <>
+      <button ref={triggerRef}>Add</button>
+      <BookmarkDialog open groups={groups} searchTemplate="https://search.test/?q=%s" onSave={vi.fn()} onClose={onClose} returnFocusRef={triggerRef} />
+    </>,
+  );
+
+  await waitFor(() => expect(screen.getByLabelText('Title')).toHaveFocus());
+  const cancel = screen.getByRole('button', { name: 'Cancel' });
+  const save = screen.getByRole('button', { name: 'Save bookmark' });
+  save.focus();
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Tab' });
+  expect(screen.getByLabelText('Title')).toHaveFocus();
+  screen.getByLabelText('Title').focus();
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Tab', shiftKey: true });
+  expect(save).toHaveFocus();
+  cancel.focus();
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+  expect(onClose).toHaveBeenCalledOnce();
+
+  rerender(
+    <>
+      <button ref={triggerRef}>Add</button>
+      <BookmarkDialog open={false} groups={groups} searchTemplate="https://search.test/?q=%s" onSave={vi.fn()} onClose={onClose} returnFocusRef={triggerRef} />
+    </>,
+  );
+  await waitFor(() => expect(triggerRef.current).toHaveFocus());
 });
