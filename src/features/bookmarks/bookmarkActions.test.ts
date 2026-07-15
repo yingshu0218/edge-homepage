@@ -84,6 +84,23 @@ describe('bookmark actions', () => {
     ]);
   });
 
+  it('rejects moving a bookmark to a missing group without changing the snapshot', () => {
+    const source = createDefaultSnapshot();
+    const before = structuredClone(source);
+
+    expect(() => editBookmark(source, 'mdn', { groupId: 'missing' }, 20)).toThrow(RangeError);
+    expect(source).toEqual(before);
+  });
+
+  it('rejects moving a bookmark to a soft-deleted group without changing the snapshot', () => {
+    const source = createDefaultSnapshot();
+    source.groups.push({ id: 'deleted', name: 'Deleted', order: 1, updatedAt: 0, deletedAt: 1 });
+    const before = structuredClone(source);
+
+    expect(() => editBookmark(source, 'mdn', { groupId: 'deleted' }, 20)).toThrow(RangeError);
+    expect(source).toEqual(before);
+  });
+
   it('validates a group deletion destination', () => {
     const source = createDefaultSnapshot();
     source.groups.push({ id: 'deleted', name: 'Deleted', order: 1, updatedAt: 0, deletedAt: 1 });

@@ -27,6 +27,8 @@ export function editBookmark(snapshot: AppSnapshot, id: string, changes: Partial
   if (!current || !changes.groupId || changes.groupId === current.groupId) {
     return { ...snapshot, bookmarks: snapshot.bookmarks.map((bookmark) => bookmark.id === id ? { ...bookmark, ...changes, updatedAt: now } : bookmark) };
   }
+  const destinationGroup = snapshot.groups.find((group) => group.id === changes.groupId && group.deletedAt === undefined);
+  if (!destinationGroup) throw new RangeError('An active destination group is required.');
   const sourceIds = filterBookmarksByGroup(snapshot, current.groupId).filter((bookmark) => bookmark.id !== id).map(({ id }) => id);
   const targetIds = filterBookmarksByGroup(snapshot, changes.groupId).map(({ id }) => id);
   let bookmarks = snapshot.bookmarks.map((bookmark) => bookmark.id === id ? { ...bookmark, ...changes, order: targetIds.length, updatedAt: now } : bookmark);
