@@ -46,6 +46,7 @@ export class EdgeSyncProvider implements SyncProvider {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private pendingSnapshot: AppSnapshot | undefined;
   private waiters: Array<{ resolve: (result: SyncResult) => void; reject: (error: unknown) => void }> = [];
+  private writeQueue: Promise<void> = Promise.resolve();
   private readonly debounceMs: number;
   private readonly now: () => number;
 
@@ -62,23 +63,30 @@ export class EdgeSyncProvider implements SyncProvider {
     this.pendingSnapshot = snapshot;
     if (this.timer !== undefined) clearTimeout(this.timer);
     const promise = new Promise<SyncResult>((resolve, reject) => this.waiters.push({ resolve, reject }));
-    this.timer = setTimeout(() => { void this.flush(); }, this.debounceMs);
+    this.timer = setTimeout(() => { this.enqueuePending(); }, this.debounceMs);
     return promise;
   }
 
-  private async flush(): Promise<void> {
+  private enqueuePending(): void {
     this.timer = undefined;
     const snapshot = this.pendingSnapshot!;
     this.pendingSnapshot = undefined;
     const waiters = this.waiters;
     this.waiters = [];
+    this.writeQueue = this.writeQueue.then(() => this.flush(snapshot, waiters));
+  }
+
+  private async flush(
+    snapshot: AppSnapshot,
+    waiters: Array<{ resolve: (result: SyncResult) => void; reject: (error: unknown) => void }>,
+  ): Promise<void> {
     try {
       const items = chunks(snapshot);
       validateItems(items);
       const existing = await this.storage.get(null);
       const obsolete = Object.keys(existing).filter((key) => isManagedKey(key) && !(key in items));
-      if (obsolete.length > 0) await this.storage.remove(obsolete);
       await this.storage.set(items);
+      if (obsolete.length > 0) await this.storage.remove(obsolete);
       const bytes = await this.storage.getBytesInUse(null);
       const result: SyncResult = bytes > WARNING_THRESHOLD
         ? { kind: 'warning', bytes }

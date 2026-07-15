@@ -66,6 +66,51 @@ describe('EdgeSyncProvider', () => {
     expect((sync.data.settings as AppSnapshot['settings']).themeId).toBe('latest');
   });
 
+  it('serializes slow writes across debounce windows so the latest snapshot wins', async () => {
+    vi.useFakeTimers();
+    const sync = fakeSync();
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let firstStarted!: () => void;
+    const firstSetStarted = new Promise<void>((resolve) => { firstStarted = resolve; });
+    let setCount = 0;
+    sync.area.set = async (items: Record<string, unknown>) => {
+      setCount += 1;
+      if (setCount === 1) {
+        firstStarted();
+        await firstBlocked;
+      }
+      Object.assign(sync.data, items);
+    };
+    const provider = new EdgeSyncProvider(sync.area, sync.changes);
+    const first = createDefaultSnapshot();
+    first.settings.themeId = 'first';
+    const latest = structuredClone(first);
+    latest.settings.themeId = 'latest';
+
+    const firstPush = provider.push(first);
+    await vi.advanceTimersByTimeAsync(750);
+    await firstSetStarted;
+    const latestPush = provider.push(latest);
+    await vi.advanceTimersByTimeAsync(750);
+    releaseFirst();
+    await Promise.all([firstPush, latestPush]);
+
+    expect(setCount).toBe(2);
+    expect((sync.data.settings as AppSnapshot['settings']).themeId).toBe('latest');
+  });
+
+  it('does not delete obsolete remote keys when writing the replacement fails', async () => {
+    const oldBookmark = createDefaultSnapshot().bookmarks[0]!;
+    const sync = fakeSync({ 'bookmark:old': { ...oldBookmark, id: 'old' } });
+    sync.area.set = async () => { throw new Error('write failed'); };
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+
+    await expect(provider.push(createDefaultSnapshot())).rejects.toThrow('write failed');
+
+    expect(sync.data['bookmark:old']).toBeDefined();
+  });
+
   it('pulls chunked records into a snapshot', async () => {
     const snapshot = createDefaultSnapshot();
     const sync = fakeSync({
