@@ -45,7 +45,7 @@ export async function processCustomBackground(file: File): Promise<Blob> {
 export type ThemePickerProps = {
   selectedThemeId: string;
   useCustomBackground: boolean;
-  backgroundStore?: BackgroundStore;
+  backgroundStore?: Pick<BackgroundStore, 'put'>;
   onThemeChange: (themeId: string) => void;
   onCustomBackgroundChange: (enabled: boolean) => void;
   processImage?: BackgroundProcessor;
