@@ -1,0 +1,74 @@
+import { useId, useState, type ChangeEvent } from 'react';
+
+import type { AppSnapshot } from '../../domain/models';
+import type { SyncState } from '../../sync/types';
+import { SyncStatus } from '../../sync/SyncStatus';
+
+export type ImportMode = 'replace' | 'merge';
+
+export type SettingsPanelProps = {
+  snapshot: AppSnapshot;
+  syncState: SyncState;
+  onSearchTemplateChange: (searchTemplate: string) => void;
+  onThemeParametersChange: (parameters: { overlay: number; blur: number }) => void;
+  onImport: (text: string, mode: ImportMode) => void | Promise<void>;
+  onExport: () => void;
+  onReset: () => void;
+};
+
+function readFile(file: Blob): Promise<string> {
+  if (typeof file.text === 'function') return file.text();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('无法读取备份'));
+    reader.readAsText(file);
+  });
+}
+
+export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onThemeParametersChange, onImport, onExport, onReset }: SettingsPanelProps) {
+  const importId = useId();
+  const [mode, setMode] = useState<ImportMode>('replace');
+  const [parameters, setParameters] = useState({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
+  const [error, setError] = useState<string>();
+
+  const changeParameter = (name: 'overlay' | 'blur', value: number) => {
+    const next = { ...parameters, [name]: value };
+    setParameters(next);
+    onThemeParametersChange(next);
+  };
+  const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setError(undefined);
+    try { await onImport(await readFile(file), mode); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : '导入失败'); }
+  };
+
+  return (
+    <section aria-label="设置">
+      <h2>设置</h2>
+      <label>搜索引擎
+        <input value={snapshot.settings.searchTemplate} onChange={(event) => onSearchTemplateChange(event.target.value)} />
+      </label>
+      <label>遮罩强度
+        <input type="range" min="0" max="1" step="0.05" value={parameters.overlay} onChange={(event) => changeParameter('overlay', Number(event.target.value))} />
+      </label>
+      <label>模糊强度
+        <input type="range" min="0" max="24" step="1" value={parameters.blur} onChange={(event) => changeParameter('blur', Number(event.target.value))} />
+      </label>
+      <fieldset>
+        <legend>导入方式</legend>
+        <label><input type="radio" name="import-mode" checked={mode === 'replace'} onChange={() => setMode('replace')} />替换现有数据</label>
+        <label><input type="radio" name="import-mode" checked={mode === 'merge'} onChange={() => setMode('merge')} />合并数据</label>
+      </fieldset>
+      <label htmlFor={importId}>导入备份</label>
+      <input id={importId} type="file" accept="application/json,.json" onChange={importFile} />
+      {error && <p role="alert">{error}</p>}
+      <button type="button" onClick={onExport}>导出备份</button>
+      <button type="button" onClick={() => { if (window.confirm('确定要重置全部数据吗？此操作无法撤销。')) onReset(); }}>重置全部数据</button>
+      <SyncStatus state={syncState} />
+    </section>
+  );
+}
