@@ -102,3 +102,20 @@ npm run build                    passed
 node manifest/package validator  passed
 git diff --check                 passed
 ```
+
+## Second review hardening pass
+
+Review-fix commit: `e5f71336ad856cc7481f8a68afff8ab837d38549`
+
+- RED: unsubscribing during an active provider write still left the callback in `deferredListeners`, so `flush()` invoked it after completion. GREEN: unsubscribe removes both the Chrome listener and the deferred callback; a blocked-write regression test verifies zero post-unsubscribe delivery.
+- RED: initial remote hydration rendered correctly but used a fire-and-forget repository save; rejection was unhandled and invisible. GREEN: hydration awaits and catches the save while keeping the merged page visible, and reports `localSaved: false` through the recoverable save-error UI.
+- Added a hydration-save rejection integration test that verifies the remote bookmark remains visible and the failure status is presented without an unhandled rejection.
+
+Final second-pass verification:
+
+```text
+npm test                         14 files, 71 tests passed
+npm run build                    passed
+node manifest/package validator  passed
+git diff --check                 passed
+```
