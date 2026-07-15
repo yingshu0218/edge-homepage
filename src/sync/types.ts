@@ -5,7 +5,7 @@ export type SyncState =
   | { kind: 'pending' }
   | { kind: 'synced'; at: number }
   | { kind: 'warning'; bytes: number }
-  | { kind: 'error'; message: string; localSaved: true };
+  | { kind: 'error'; message: string; localSaved: boolean };
 
 export type SyncResult = Extract<SyncState, { kind: 'synced' | 'warning' }>;
 

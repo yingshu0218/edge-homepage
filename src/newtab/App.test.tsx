@@ -5,6 +5,9 @@ import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot } from '../domain/models';
 import type { SyncState } from '../sync/types';
 import { App, type AppServices } from './App';
+import { exportSnapshot } from '../storage/transfer';
+import { EdgeSyncProvider } from '../sync/edgeSyncProvider';
+import { SyncCoordinator } from '../sync/syncCoordinator';
 
 afterEach(cleanup);
 
@@ -100,5 +103,108 @@ describe('new tab application', () => {
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(screen.getByRole('button', { name: '导出备份' })).toBeInTheDocument();
     expect(screen.getByLabelText('导入备份')).toBeInTheDocument();
+  });
+
+  it('clears the local background before resetting the snapshot', async () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.settings.useCustomBackground = true;
+    const services = fakeServices(snapshot);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    fireEvent.click(screen.getByRole('button', { name: '重置全部数据' }));
+
+    await waitFor(() => expect(services.backgrounds.clear).toHaveBeenCalledOnce());
+    expect(services.coordinator.saveAndSync).toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ useCustomBackground: false }),
+    }));
+  });
+
+  it('drops a missing custom background when replacing from a JSON backup', async () => {
+    const current = createDefaultSnapshot();
+    current.settings.useCustomBackground = true;
+    const imported = createDefaultSnapshot();
+    imported.settings.useCustomBackground = true;
+    const services = fakeServices(current);
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    const file = new File([await exportSnapshot(imported).text()], 'backup.json', { type: 'application/json' });
+    fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [file] } });
+
+    await waitFor(() => expect(services.backgrounds.clear).toHaveBeenCalledOnce());
+    expect(services.coordinator.saveAndSync).toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ useCustomBackground: false }),
+    }));
+  });
+
+  it('shows a recoverable sync error when persistence rejects', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    services.coordinator.saveAndSync = vi.fn().mockRejectedValue(new Error('local write failed'));
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    fireEvent.click(screen.getByRole('button', { name: '添加书签' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Docs' } });
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://example.com/docs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }));
+
+    await waitFor(() => expect(screen.getAllByRole('status').some((node) => node.textContent?.includes('local write failed'))).toBe(true));
+  });
+
+  it('ignores a subscription pull that completes after unmount', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    let notify!: () => void;
+    services.sync.subscribe = vi.fn((listener) => { notify = listener; return vi.fn(); });
+    let resolvePull!: (snapshot: AppSnapshot) => void;
+    services.sync.pull = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolvePull = resolve; }));
+    const view = render(<App services={services} />);
+    await screen.findByText('GitHub');
+    notify();
+    await Promise.resolve();
+    view.unmount();
+    resolvePull(createDefaultSnapshot());
+    await Promise.resolve();
+
+    expect(services.repository.save).not.toHaveBeenCalled();
+  });
+
+  it('resets through the real Edge provider without reviving removed remote bookmarks', async () => {
+    const old = createDefaultSnapshot();
+    old.bookmarks.push({ ...old.bookmarks[0]!, id: 'obsolete', title: 'Obsolete', order: 4 });
+    const remote: Record<string, unknown> = { meta: { schemaVersion: 1 }, settings: old.settings };
+    old.groups.forEach((group) => { remote[`group:${group.id}`] = group; });
+    old.bookmarks.forEach((bookmark) => { remote[`bookmark:${bookmark.id}`] = bookmark; });
+    const listeners = new Set<(changes: Record<string, unknown>, area: string) => void>();
+    const area = {
+      async get() { return { ...remote }; },
+      async set(items: Record<string, unknown>) { Object.assign(remote, items); listeners.forEach((listener) => listener({}, 'sync')); },
+      async remove(keys: string[]) { keys.forEach((key) => delete remote[key]); listeners.forEach((listener) => listener({}, 'sync')); },
+      async getBytesInUse() { return 0; },
+    };
+    const changes = {
+      addListener(listener: (changes: Record<string, unknown>, area: string) => void) { listeners.add(listener); },
+      removeListener(listener: (changes: Record<string, unknown>, area: string) => void) { listeners.delete(listener); },
+    };
+    const provider = new EdgeSyncProvider(area, changes, { debounceMs: 0, now: () => 1 });
+    let local = old;
+    const repository = { load: vi.fn(async () => local), save: vi.fn(async (next: AppSnapshot) => { local = next; }) };
+    const backgrounds = { get: vi.fn().mockResolvedValue(undefined), put: vi.fn(), clear: vi.fn().mockResolvedValue(undefined) };
+    const services: AppServices = {
+      repository, sync: provider, coordinator: new SyncCoordinator(repository, provider), backgrounds,
+      navigate: vi.fn(), download: vi.fn(), now: () => 2, createId: () => 'id',
+    };
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(<App services={services} />);
+    expect(await screen.findByText('Obsolete')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    fireEvent.click(screen.getByRole('button', { name: '重置全部数据' }));
+
+    await waitFor(() => expect(remote['bookmark:obsolete']).toBeUndefined());
+    await waitFor(() => expect(screen.queryByText('Obsolete')).not.toBeInTheDocument());
+    expect(local.bookmarks.some(({ id }) => id === 'obsolete')).toBe(false);
+    expect(backgrounds.clear).toHaveBeenCalledOnce();
   });
 });

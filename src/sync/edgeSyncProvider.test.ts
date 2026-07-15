@@ -5,15 +5,21 @@ import { EdgeSyncProvider, mergeSnapshots } from './edgeSyncProvider';
 
 type ChangeListener = (changes: Record<string, unknown>, areaName: string) => void;
 
-function fakeSync(initial: Record<string, unknown> = {}) {
+function fakeSync(initial: Record<string, unknown> = {}, notifyWrites = false) {
   const data = { ...initial };
   const listeners = new Set<ChangeListener>();
   return {
     data,
     area: {
       async get() { return { ...data }; },
-      async set(items: Record<string, unknown>) { Object.assign(data, items); },
-      async remove(keys: string[]) { keys.forEach((key) => delete data[key]); },
+      async set(items: Record<string, unknown>) {
+        Object.assign(data, items);
+        if (notifyWrites) listeners.forEach((listener) => listener({}, 'sync'));
+      },
+      async remove(keys: string[]) {
+        keys.forEach((key) => delete data[key]);
+        if (notifyWrites) listeners.forEach((listener) => listener({}, 'sync'));
+      },
       async getBytesInUse() { return 0; },
     },
     changes: {
@@ -132,6 +138,25 @@ describe('EdgeSyncProvider', () => {
     unsubscribe();
     sync.emit();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('notifies subscribers only after a replacement push has removed obsolete records', async () => {
+    const old = createDefaultSnapshot();
+    old.bookmarks.push({ ...old.bookmarks[0]!, id: 'obsolete', title: 'Obsolete', order: 4 });
+    const initial: Record<string, unknown> = { meta: { schemaVersion: 1 }, settings: old.settings };
+    old.groups.forEach((group) => { initial[`group:${group.id}`] = group; });
+    old.bookmarks.forEach((bookmark) => { initial[`bookmark:${bookmark.id}`] = bookmark; });
+    const sync = fakeSync(initial, true);
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+    const observed: string[][] = [];
+    provider.subscribe(() => { void provider.pull().then((snapshot) => observed.push(snapshot?.bookmarks.map(({ id }) => id) ?? [])); });
+
+    const replacement = createDefaultSnapshot();
+    replacement.bookmarks = [replacement.bookmarks[0]!];
+    await provider.push(replacement);
+    await vi.waitFor(() => expect(observed).toHaveLength(1));
+
+    expect(observed[0]).toEqual(['github']);
   });
 });
 

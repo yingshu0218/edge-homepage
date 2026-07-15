@@ -7,7 +7,7 @@ export function SyncStatus({ state }: { state: SyncState }) {
     case 'pending': message = '正在同步…'; break;
     case 'synced': message = `已同步 · ${new Date(state.at).toLocaleString()}`; break;
     case 'warning': message = `已同步，但数据量较大（${Math.ceil(state.bytes / 1024)} KB）`; break;
-    case 'error': message = `已保存在本机，同步失败：${state.message}`; break;
+    case 'error': message = state.localSaved ? `已保存在本机，同步失败：${state.message}` : `保存失败：${state.message}`; break;
   }
   return <p role="status">{message}</p>;
 }

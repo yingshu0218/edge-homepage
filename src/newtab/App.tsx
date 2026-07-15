@@ -52,8 +52,10 @@ export function App({ services }: { services: AppServices }) {
   const [editing, setEditing] = useState<Bookmark>();
   const [drawer, setDrawer] = useState<Drawer>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
+  const snapshotRef = useRef<AppSnapshot | undefined>(undefined);
 
   const acceptSnapshot = useCallback((next: AppSnapshot) => {
+    snapshotRef.current = next;
     setSnapshot(next);
     setActiveGroupId((current) => next.groups.some((group) => group.id === current && !group.deletedAt)
       ? current
@@ -78,17 +80,29 @@ export function App({ services }: { services: AppServices }) {
     return () => { active = false; };
   }, [acceptSnapshot, services]);
 
-  useEffect(() => services.sync.subscribe(() => {
-    void services.sync.pull().then((remote) => {
-      if (!remote) return;
-      setSnapshot((local) => {
-        if (!local) return remote;
-        const merged = mergeSnapshots(local, remote);
-        void services.repository.save(merged);
-        return merged;
+  useEffect(() => {
+    let active = true;
+    let generation = 0;
+    let queue = Promise.resolve();
+    const unsubscribe = services.sync.subscribe(() => {
+      const requested = ++generation;
+      queue = queue.then(async () => {
+        if (!active || requested !== generation) return;
+        try {
+          const remote = await services.sync.pull();
+          if (!active || requested !== generation || !remote) return;
+          const local = snapshotRef.current;
+          const merged = local ? mergeSnapshots(local, remote) : remote;
+          await services.repository.save(merged);
+          if (!active || requested !== generation) return;
+          acceptSnapshot(merged);
+        } catch (cause) {
+          if (active && requested === generation) setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: true });
+        }
       });
-    }).catch((cause) => setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: true }));
-  }), [services]);
+    });
+    return () => { active = false; generation += 1; unsubscribe(); };
+  }, [acceptSnapshot, services]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -100,7 +114,11 @@ export function App({ services }: { services: AppServices }) {
   const persist = useCallback(async (next: AppSnapshot) => {
     acceptSnapshot(next);
     setSyncState({ kind: 'pending' });
-    setSyncState(await services.coordinator.saveAndSync(next));
+    try {
+      setSyncState(await services.coordinator.saveAndSync(next));
+    } catch (cause) {
+      setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: false });
+    }
   }, [acceptSnapshot, services.coordinator]);
 
   const updateSettings = useCallback((changes: Partial<AppSnapshot['settings']>) => {
@@ -129,7 +147,23 @@ export function App({ services }: { services: AppServices }) {
 
   const importData = async (text: string, mode: ImportMode) => {
     const imported = parseSnapshot(text);
-    await persist(mode === 'replace' ? imported : mergeImported(snapshot, imported));
+    if (mode === 'replace') {
+      await services.backgrounds.clear();
+      setCustomBackground(undefined);
+      await persist({ ...imported, settings: { ...imported.settings, useCustomBackground: false, updatedAt: now() } });
+      return;
+    }
+    await persist(mergeImported(snapshot, imported));
+  };
+
+  const reset = async () => {
+    try {
+      await services.backgrounds.clear();
+      setCustomBackground(undefined);
+      await persist(createDefaultSnapshot());
+    } catch (cause) {
+      setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: false });
+    }
   };
 
   const addNewGroup = () => {
@@ -205,7 +239,7 @@ export function App({ services }: { services: AppServices }) {
             onThemeParametersChange={(parameters) => updateSettings(parameters)}
             onImport={importData}
             onExport={() => services.download(exportSnapshot(snapshot), `day-start-${new Date(now()).toISOString().slice(0, 10)}.json`)}
-            onReset={() => void persist(createDefaultSnapshot())}
+            onReset={() => void reset()}
           />}
         </aside>
       </div>}

@@ -49,6 +49,8 @@ export class EdgeSyncProvider implements SyncProvider {
   private writeQueue: Promise<void> = Promise.resolve();
   private readonly debounceMs: number;
   private readonly now: () => number;
+  private writesInProgress = 0;
+  private readonly deferredListeners = new Set<() => void>();
 
   constructor(
     private readonly storage: EdgeSyncStorage,
@@ -80,6 +82,8 @@ export class EdgeSyncProvider implements SyncProvider {
     snapshot: AppSnapshot,
     waiters: Array<{ resolve: (result: SyncResult) => void; reject: (error: unknown) => void }>,
   ): Promise<void> {
+    let completed = false;
+    this.writesInProgress += 1;
     try {
       const items = chunks(snapshot);
       validateItems(items);
@@ -87,6 +91,7 @@ export class EdgeSyncProvider implements SyncProvider {
       const obsolete = Object.keys(existing).filter((key) => isManagedKey(key) && !(key in items));
       await this.storage.set(items);
       if (obsolete.length > 0) await this.storage.remove(obsolete);
+      completed = true;
       const bytes = await this.storage.getBytesInUse(null);
       const result: SyncResult = bytes > WARNING_THRESHOLD
         ? { kind: 'warning', bytes }
@@ -94,6 +99,13 @@ export class EdgeSyncProvider implements SyncProvider {
       waiters.forEach(({ resolve }) => resolve(result));
     } catch (error) {
       waiters.forEach(({ reject }) => reject(error));
+    } finally {
+      this.writesInProgress -= 1;
+      if (this.writesInProgress === 0) {
+        const listeners = [...this.deferredListeners];
+        this.deferredListeners.clear();
+        if (completed) listeners.forEach((listener) => listener());
+      }
     }
   }
 
@@ -112,7 +124,9 @@ export class EdgeSyncProvider implements SyncProvider {
 
   subscribe(listener: () => void): () => void {
     const onChanged = (_changes: Record<string, unknown>, areaName: string) => {
-      if (areaName === 'sync') listener();
+      if (areaName !== 'sync') return;
+      if (this.writesInProgress > 0) this.deferredListeners.add(listener);
+      else listener();
     };
     this.changes.addListener(onChanged);
     return () => this.changes.removeListener(onChanged);
