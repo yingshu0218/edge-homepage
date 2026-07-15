@@ -69,12 +69,18 @@ export function App({ services }: { services: AppServices }) {
       return null;
     });
     Promise.all([services.repository.load(), services.backgrounds.get(), remote])
-      .then(([local, background, remote]) => {
+      .then(async ([local, background, remote]) => {
         if (!active) return;
         const hydrated = remote ? mergeSnapshots(local, remote) : local;
         acceptSnapshot(hydrated);
         setCustomBackground(background);
-        if (remote) void services.repository.save(hydrated);
+        if (remote) {
+          try {
+            await services.repository.save(hydrated);
+          } catch (cause) {
+            if (active) setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: false });
+          }
+        }
       })
       .catch((cause) => active && setError(cause instanceof Error ? cause.message : String(cause)));
     return () => { active = false; };

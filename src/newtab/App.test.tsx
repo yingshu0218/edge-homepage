@@ -82,6 +82,19 @@ describe('new tab application', () => {
     }));
   });
 
+  it('keeps the hydrated page usable when saving the merged snapshot fails', async () => {
+    const remote = createDefaultSnapshot();
+    remote.bookmarks.push({ ...remote.bookmarks[0]!, id: 'remote', title: 'Remote', order: 4, updatedAt: 2 });
+    const services = fakeServices(createDefaultSnapshot());
+    services.sync.pull = vi.fn().mockResolvedValue(remote);
+    services.repository.save = vi.fn().mockRejectedValue(new Error('hydration save failed'));
+
+    render(<App services={services} />);
+
+    expect(await screen.findByText('Remote')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByRole('status').some((node) => node.textContent?.includes('hydration save failed'))).toBe(true));
+  });
+
   it('keeps the local start page usable when the Edge pull is unavailable', async () => {
     const services = fakeServices(createDefaultSnapshot());
     services.sync.pull = vi.fn().mockRejectedValue(new Error('Edge sync unavailable'));

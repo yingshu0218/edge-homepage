@@ -129,7 +129,10 @@ export class EdgeSyncProvider implements SyncProvider {
       else listener();
     };
     this.changes.addListener(onChanged);
-    return () => this.changes.removeListener(onChanged);
+    return () => {
+      this.changes.removeListener(onChanged);
+      this.deferredListeners.delete(listener);
+    };
   }
 }
 

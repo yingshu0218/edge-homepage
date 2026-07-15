@@ -158,6 +158,25 @@ describe('EdgeSyncProvider', () => {
 
     expect(observed[0]).toEqual(['github']);
   });
+
+  it('does not deliver a deferred self-notification after unsubscribe', async () => {
+    const sync = fakeSync({}, true);
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const originalSet = sync.area.set;
+    sync.area.set = async (items) => { await originalSet(items); await blocked; };
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+    const listener = vi.fn();
+    const unsubscribe = provider.subscribe(listener);
+
+    const pushing = provider.push(createDefaultSnapshot());
+    await vi.waitFor(() => expect(Object.keys(sync.data).length).toBeGreaterThan(0));
+    unsubscribe();
+    release();
+    await pushing;
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 });
 
 describe('mergeSnapshots', () => {
