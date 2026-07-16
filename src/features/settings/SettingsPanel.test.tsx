@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDefaultSnapshot } from '../../domain/defaults';
 import { SettingsPanel } from './SettingsPanel';
+import { exportSnapshot } from '../../storage/transfer';
 
 afterEach(cleanup);
 
@@ -55,9 +56,24 @@ describe('SettingsPanel', () => {
     );
 
     fireEvent.click(screen.getByLabelText('合并数据'));
-    fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File(['{}'], 'backup.json', { type: 'application/json' })] } });
+    const text = await exportSnapshot(createDefaultSnapshot()).text();
+    fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([text], 'backup.json', { type: 'application/json' })] } });
 
-    await waitFor(() => expect(onImport).toHaveBeenCalledWith('{}', 'merge'));
+    expect(await screen.findByRole('dialog', { name: '确认导入' })).toHaveTextContent('合并');
+    expect(screen.getByRole('dialog', { name: '确认导入' })).toHaveTextContent('1 个分组 · 4 个书签');
+    expect(onImport).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '确认导入' }));
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(text, 'merge'));
+  });
+
+  it('cancels an import preview without writing', async () => {
+    const onImport = vi.fn();
+    render(<SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={onImport} onExport={vi.fn()} onReset={vi.fn()} />);
+    const text = await exportSnapshot(createDefaultSnapshot()).text();
+    fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([text], 'backup.json')] } });
+    await screen.findByRole('dialog', { name: '确认导入' });
+    fireEvent.click(screen.getByRole('button', { name: '取消导入' }));
+    expect(onImport).not.toHaveBeenCalled();
   });
 
   it('requires confirmation before reset', () => {

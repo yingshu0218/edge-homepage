@@ -3,6 +3,7 @@ import { useEffect, useId, useState, type ChangeEvent } from 'react';
 import type { AppSnapshot } from '../../domain/models';
 import type { SyncState } from '../../sync/types';
 import { SyncStatus } from '../../sync/SyncStatus';
+import { parseSnapshot } from '../../storage/transfer';
 
 export type ImportMode = 'replace' | 'merge';
 
@@ -31,6 +32,7 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
   const [mode, setMode] = useState<ImportMode>('replace');
   const [parameters, setParameters] = useState({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
   const [error, setError] = useState<string>();
+  const [pendingImport, setPendingImport] = useState<{ text: string; mode: ImportMode; groups: number; bookmarks: number }>();
 
   useEffect(() => {
     setParameters({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
@@ -46,7 +48,11 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
     event.target.value = '';
     if (!file) return;
     setError(undefined);
-    try { await onImport(await readFile(file), mode); }
+    try {
+      const text = await readFile(file);
+      const parsed = parseSnapshot(text);
+      setPendingImport({ text, mode, groups: parsed.groups.filter(({ deletedAt }) => !deletedAt).length, bookmarks: parsed.bookmarks.filter(({ deletedAt }) => !deletedAt).length });
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : '导入失败'); }
   };
 
@@ -69,6 +75,12 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
       </fieldset>
       <label htmlFor={importId}>导入备份</label>
       <input id={importId} type="file" accept="application/json,.json" onChange={importFile} />
+      {pendingImport && <div className="import-confirm" role="dialog" aria-label="确认导入">
+        <strong>确认{pendingImport.mode === 'replace' ? '替换' : '合并'}导入</strong>
+        <p>{pendingImport.groups} 个分组 · {pendingImport.bookmarks} 个书签</p>
+        <button type="button" onClick={async () => { const pending = pendingImport; setPendingImport(undefined); await onImport(pending.text, pending.mode); }}>确认导入</button>
+        <button type="button" onClick={() => setPendingImport(undefined)}>取消导入</button>
+      </div>}
       {error && <p role="alert">{error}</p>}
       <button type="button" onClick={onExport}>导出备份</button>
       <button type="button" onClick={() => { if (window.confirm('确定要重置全部数据吗？此操作无法撤销。')) onReset(); }}>重置全部数据</button>

@@ -8,7 +8,8 @@ function fakeBackgroundDatabase(): BackgroundDatabase {
 
   return {
     async put(_storeName, value, key) {
-      values.set(key, value);
+      const bytes = await new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = () => reject(reader.error); reader.readAsArrayBuffer(value); });
+      values.set(key, new Blob([bytes], { type: value.type }));
     },
     async get(_storeName, key) {
       return values.get(key);
@@ -31,6 +32,9 @@ describe('BackgroundStore', () => {
     expect(loaded).toBeInstanceOf(Blob);
     expect(loaded?.type).toBe('image/png');
     expect(loaded?.size).toBe(background.size);
+    const read = (blob: Blob) => new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = () => reject(reader.error); reader.readAsArrayBuffer(blob); });
+    expect(new Uint8Array(await read(loaded!))).toEqual(new Uint8Array(await read(background)));
+    expect(loaded).not.toBe(background);
   });
 
   it('returns undefined when no custom background exists', async () => {

@@ -5,7 +5,7 @@ import type { AppSnapshot, Bookmark } from '../domain/models';
 import { BookmarkDialog, type BookmarkDialogValue } from '../features/bookmarks/BookmarkDialog';
 import { BookmarkGrid } from '../features/bookmarks/BookmarkGrid';
 import { GroupTabs } from '../features/bookmarks/GroupTabs';
-import { addBookmark, addGroup, deleteBookmark, editBookmark } from '../features/bookmarks/bookmarkActions';
+import { addBookmark, addGroup, deleteBookmark, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, reorderGroups } from '../features/bookmarks/bookmarkActions';
 import { SearchBox } from '../features/search/SearchBox';
 import { SettingsPanel, type ImportMode } from '../features/settings/SettingsPanel';
 import { ThemePicker } from '../features/themes/ThemePicker';
@@ -48,6 +48,7 @@ export function App({ services }: { services: AppServices }) {
   const [customBackground, setCustomBackground] = useState<Blob>();
   const [syncState, setSyncState] = useState<SyncState>({ kind: 'local' });
   const [error, setError] = useState<string>();
+  const [backgroundFallback, setBackgroundFallback] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Bookmark>();
@@ -80,6 +81,7 @@ export function App({ services }: { services: AppServices }) {
         const hydrated = remote ? mergeSnapshots(local, remote) : local;
         acceptSnapshot(hydrated);
         setCustomBackground(background);
+        setBackgroundFallback(hydrated.settings.useCustomBackground && !background);
         if (remote) {
           try {
             await services.repository.save(hydrated);
@@ -118,6 +120,7 @@ export function App({ services }: { services: AppServices }) {
 
   useEffect(() => {
     if (!snapshot) return;
+    if (!snapshot.settings.useCustomBackground) setBackgroundFallback(false);
     const resolved = resolveTheme(snapshot.settings, customBackground);
     applyResolvedTheme(resolved);
     return () => { if (resolved.isCustom) URL.revokeObjectURL(resolved.imageUrl); };
@@ -217,13 +220,37 @@ export function App({ services }: { services: AppServices }) {
     void persist(addGroup(snapshot, { id: createId(), name: name.trim() }, now()));
   };
 
+  const renameGroup = (id: string) => {
+    const group = snapshot.groups.find((item) => item.id === id);
+    const name = window.prompt('新的分组名称', group?.name ?? '');
+    if (name?.trim()) void persist(editGroup(snapshot, id, name.trim(), now()));
+  };
+  const removeGroup = (id: string) => {
+    const others = snapshot.groups.filter((group) => !group.deletedAt && group.id !== id);
+    if (others.length === 0) { window.alert('至少需要保留一个分组'); return; }
+    const choice = window.prompt('删除分组：输入 move 将书签移动到其他分组（默认），输入 delete 一并删除书签，输入 cancel 取消', 'move')?.trim().toLowerCase();
+    if (!choice || choice === 'cancel') return;
+    if (choice === 'delete') void persist(deleteGroupAndBookmarks(snapshot, id, now()));
+    else if (choice === 'move') void persist(deleteGroup(snapshot, id, others[0]!.id, now()));
+  };
+
+  const syncFact = syncState.kind === 'synced'
+    ? { label: 'Microsoft 已同步', symbol: '✓', detail: '已同步', success: true }
+    : syncState.kind === 'warning'
+      ? { label: 'Microsoft 同步警告', symbol: '!', detail: '容量警告', success: false }
+      : syncState.kind === 'error'
+        ? { label: 'Microsoft 同步异常', symbol: '×', detail: '同步异常', success: false }
+        : syncState.kind === 'pending'
+          ? { label: 'Microsoft 正在同步', symbol: '…', detail: '正在同步', success: false }
+          : { label: 'Microsoft 仅本地', symbol: '•', detail: '仅本地', success: false };
+
   return (
     <main className="app-shell">
       <div className="backdrop" aria-hidden="true" />
       <header className="topbar">
         <a className="brand" href="index.html" aria-label="Day Start 首页">DAY<span>/</span>START</a>
         <nav className="top-actions" aria-label="启动页操作">
-          <div className="sync-chip"><span aria-hidden="true" />Microsoft · <SyncStatus state={syncState} /></div>
+          <div className={`sync-chip sync-${syncState.kind}`}><span aria-hidden="true" />Microsoft · <SyncStatus state={syncState} /></div>
           <button ref={themeButtonRef} className="icon-button" type="button" aria-label="主题" onClick={() => openDrawer('theme', themeButtonRef.current)}>◐</button>
           <button ref={settingsButtonRef} className="icon-button" type="button" aria-label="设置" onClick={() => openDrawer('settings', settingsButtonRef.current)}>⚙</button>
         </nav>
@@ -246,11 +273,13 @@ export function App({ services }: { services: AppServices }) {
               onChange={(next) => void persist(next)}
               onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }}
               onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }}
+              now={now}
             />
             <button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button>
           </div>
           <div className="group-rail">
-            <GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} />
+            <GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} onRename={renameGroup} onDelete={removeGroup}
+              onReorder={(activeId, overId) => void persist(reorderGroups(snapshot, activeId, overId, now()))} />
             <button type="button" aria-label="添加分组" onClick={addNewGroup}>＋</button>
           </div>
         </section>
@@ -259,7 +288,9 @@ export function App({ services }: { services: AppServices }) {
           <p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote>
           <hr />
           <p>快速状态</p>
-          <dl><div><dt>Microsoft</dt><dd className="success">✓</dd></div><div><dt>同步状态</dt><dd>{syncState.kind === 'synced' ? '刚刚' : '本地优先'}</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>
+          <dl><div><dt>Microsoft</dt><dd aria-label={syncFact.label} className={syncFact.success ? 'success' : undefined}>{syncFact.symbol}</dd></div><div><dt>同步状态</dt><dd>{syncFact.detail}</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>
+          {backgroundFallback && <p role="status" aria-label="背景回退提示">自定义背景仅保存在原设备，已回退到内置主题。</p>}
+          {syncState.kind === 'error' && syncState.message.includes('Corrupted Edge sync data') && <button type="button" onClick={() => void persist(snapshot)}>重置同步数据</button>}
         </aside>
       </div>
 
@@ -275,7 +306,7 @@ export function App({ services }: { services: AppServices }) {
             onThemeChange={(themeId) => updateSettings({ themeId, useCustomBackground: false })}
             onCustomBackgroundChange={(enabled) => {
               updateSettings({ useCustomBackground: enabled });
-              if (enabled) void services.backgrounds.get().then(setCustomBackground);
+              if (enabled) void services.backgrounds.get().then((background) => { setCustomBackground(background); setBackgroundFallback(!background); });
             }}
           /> : <SettingsPanel
             snapshot={snapshot}

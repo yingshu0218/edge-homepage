@@ -1,4 +1,5 @@
 import type { AppSettings, AppSnapshot, Bookmark, BookmarkGroup } from '../domain/models';
+import { validateSnapshot as validateRuntimeSnapshot } from '../domain/snapshotValidator';
 
 type BackupEnvelope = {
   app: 'day-start';
@@ -64,7 +65,8 @@ function validateSnapshot(value: unknown): AppSnapshot {
   if (!uniqueGroupIds || !uniqueBookmarkIds || bookmarks.some(({ groupId }) => !groupIds.has(groupId))) {
     throw new Error('Invalid backup');
   }
-  return value as unknown as AppSnapshot;
+  try { return validateRuntimeSnapshot(value, 'backup'); }
+  catch { throw new Error('Invalid backup'); }
 }
 
 export function exportSnapshot(snapshot: AppSnapshot): Blob {

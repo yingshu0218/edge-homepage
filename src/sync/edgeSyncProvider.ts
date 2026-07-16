@@ -1,8 +1,10 @@
 import type { AppSnapshot, Bookmark, BookmarkGroup } from '../domain/models';
+import { SnapshotCorruptionError, validateSnapshot } from '../domain/snapshotValidator';
 import type { SyncProvider, SyncResult } from './types';
 
 const ITEM_LIMIT = 8192;
 const WARNING_THRESHOLD = 90 * 1024;
+const TOTAL_LIMIT = 100 * 1024;
 const TOMBSTONE_TTL = 30 * 24 * 60 * 60 * 1000;
 
 export type EdgeSyncStorage = {
@@ -40,6 +42,11 @@ function validateItems(items: Record<string, unknown>): void {
       throw new Error(`QUOTA_BYTES_PER_ITEM: ${key}`);
     }
   }
+}
+
+function serializedBytes(items: Record<string, unknown>): number {
+  const encoder = new TextEncoder();
+  return Object.entries(items).reduce((total, [key, value]) => total + encoder.encode(JSON.stringify({ [key]: value })).byteLength, 0);
 }
 
 export class EdgeSyncProvider implements SyncProvider {
@@ -89,12 +96,20 @@ export class EdgeSyncProvider implements SyncProvider {
       validateItems(items);
       const existing = await this.storage.get(null);
       const obsolete = Object.keys(existing).filter((key) => isManagedKey(key) && !(key in items));
+      const existingManaged = Object.keys(existing).filter(isManagedKey);
+      const [currentBytes, managedBytes] = await Promise.all([
+        this.storage.getBytesInUse(null),
+        this.storage.getBytesInUse(existingManaged),
+      ]);
+      const projectedBytes = currentBytes - managedBytes + serializedBytes(items);
+      if (projectedBytes > TOTAL_LIMIT) throw new Error(`QUOTA_BYTES: projected ${projectedBytes} bytes exceeds 100 KiB`);
       await this.storage.set(items);
       if (obsolete.length > 0) await this.storage.remove(obsolete);
       completed = true;
       const bytes = await this.storage.getBytesInUse(null);
-      const result: SyncResult = bytes > WARNING_THRESHOLD
-        ? { kind: 'warning', bytes }
+      const reportedBytes = Math.max(bytes, projectedBytes);
+      const result: SyncResult = projectedBytes > WARNING_THRESHOLD || bytes > WARNING_THRESHOLD
+        ? { kind: 'warning', bytes: reportedBytes }
         : { kind: 'synced', at: this.now() };
       waiters.forEach(({ resolve }) => resolve(result));
     } catch (error) {
@@ -113,13 +128,21 @@ export class EdgeSyncProvider implements SyncProvider {
     const data = await this.storage.get(null);
     const meta = data.meta as { schemaVersion?: number } | undefined;
     const settings = data.settings as AppSnapshot['settings'] | undefined;
-    if (meta?.schemaVersion !== 1 || !settings) return null;
-    return {
+    if (!meta && !settings && !Object.keys(data).some(isManagedKey)) return null;
+    if (meta?.schemaVersion !== 1 || !settings || typeof meta !== 'object' || meta === null || Object.keys(meta).length !== 1) {
+      throw new SnapshotCorruptionError('Edge sync data', 'metadata or settings is missing or invalid');
+    }
+    const snapshot = {
       schemaVersion: 1,
       settings,
       groups: Object.entries(data).filter(([key]) => key.startsWith('group:')).map(([, value]) => value as BookmarkGroup),
       bookmarks: Object.entries(data).filter(([key]) => key.startsWith('bookmark:')).map(([, value]) => value as Bookmark),
-    };
+    } as const;
+    for (const [key, value] of Object.entries(data)) {
+      if (key.startsWith('group:') && (value as { id?: unknown })?.id !== key.slice(6)) throw new SnapshotCorruptionError('Edge sync data', `record id does not match ${key}`);
+      if (key.startsWith('bookmark:') && (value as { id?: unknown })?.id !== key.slice(9)) throw new SnapshotCorruptionError('Edge sync data', `record id does not match ${key}`);
+    }
+    return validateSnapshot(snapshot, 'Edge sync data');
   }
 
   subscribe(listener: () => void): () => void {

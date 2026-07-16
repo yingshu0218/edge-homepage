@@ -104,6 +104,47 @@ describe('new tab application', () => {
     expect(screen.getAllByRole('status').some((status) => /同步失败/.test(status.textContent ?? ''))).toBe(true);
   });
 
+  it('does not show a green success fact while sync is local or failed', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    services.sync.pull = vi.fn().mockRejectedValue(new Error('corrupt remote'));
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    expect(screen.queryByLabelText('Microsoft 已同步')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Microsoft 同步异常')).toBeInTheDocument();
+  });
+
+  it('shows factual pending and warning indicators without a green check', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    let resolve!: (state: SyncState) => void;
+    services.coordinator.saveAndSync = vi.fn(() => new Promise<SyncState>((done) => { resolve = done; }));
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    expect(screen.getByLabelText('Microsoft 仅本地')).toHaveTextContent('•');
+    fireEvent.click(screen.getByRole('button', { name: '添加书签' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Docs' } });
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://example.com/docs' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }));
+    expect(await screen.findByLabelText('Microsoft 正在同步')).toHaveTextContent('…');
+    resolve({ kind: 'warning', bytes: 93 * 1024 });
+    expect(await screen.findByLabelText('Microsoft 同步警告')).toHaveTextContent('!');
+    expect(screen.queryByLabelText('Microsoft 已同步')).not.toBeInTheDocument();
+  });
+
+  it('keeps local data and offers recovery when remote chunks are corrupt', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    services.sync.pull = vi.fn().mockRejectedValue(new Error('Corrupted Edge sync data: invalid snapshot structure'));
+    render(<App services={services} />);
+    expect(await screen.findByText('GitHub')).toBeInTheDocument();
+    expect(services.repository.save).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '重置同步数据' })).toBeInTheDocument();
+  });
+
+  it('warns and falls back when a selected custom background is missing locally', async () => {
+    const snapshot = createDefaultSnapshot(); snapshot.settings.useCustomBackground = true;
+    render(<App services={fakeServices(snapshot)} />);
+    expect(await screen.findByRole('status', { name: '背景回退提示' })).toHaveTextContent('自定义背景仅保存在原设备');
+  });
+
   it('keeps theme, settings, import and export controls reachable', async () => {
     const services = fakeServices(createDefaultSnapshot());
     render(<App services={services} />);
@@ -184,6 +225,7 @@ describe('new tab application', () => {
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     const file = new File([await exportSnapshot(imported).text()], 'backup.json', { type: 'application/json' });
     fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole('button', { name: '确认导入' }));
 
     await waitFor(() => expect(services.backgrounds.clear).toHaveBeenCalledOnce());
     expect(services.coordinator.saveAndSync).toHaveBeenCalledWith(expect.objectContaining({

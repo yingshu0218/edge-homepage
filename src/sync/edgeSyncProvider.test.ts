@@ -20,7 +20,7 @@ function fakeSync(initial: Record<string, unknown> = {}, notifyWrites = false) {
         keys.forEach((key) => delete data[key]);
         if (notifyWrites) listeners.forEach((listener) => listener({}, 'sync'));
       },
-      async getBytesInUse() { return 0; },
+      async getBytesInUse(_keys?: null | string | string[]) { return 0; },
     },
     changes: {
       addListener(listener: ChangeListener) { listeners.add(listener); },
@@ -127,6 +127,33 @@ describe('EdgeSyncProvider', () => {
     await expect(provider.pull()).resolves.toMatchObject({ bookmarks: [{ id: 'github' }], groups: [{ id: 'development' }] });
   });
 
+  it('rejects one corrupted chunk instead of returning a partial snapshot', async () => {
+    const snapshot = createDefaultSnapshot();
+    const sync = fakeSync({
+      meta: { schemaVersion: 1 }, settings: snapshot.settings,
+      'group:development': snapshot.groups[0],
+      'bookmark:github': { ...snapshot.bookmarks[0], url: 'javascript:alert(1)' },
+    });
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+    await expect(provider.pull()).rejects.toThrow('Corrupted Edge sync data');
+  });
+
+  it('rejects a projected replacement over 100 KiB before writing', async () => {
+    const sync = fakeSync({ unrelated: 'x'.repeat(10_000) });
+    sync.area.getBytesInUse = async (keys) => keys === null ? 110 * 1024 : 10 * 1024;
+    const set = vi.spyOn(sync.area, 'set');
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+    await expect(provider.push(createDefaultSnapshot())).rejects.toThrow('QUOTA_BYTES');
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('warns from projected usage before writing when replacement crosses 90 KiB', async () => {
+    const sync = fakeSync({ unrelated: 'x'.repeat(10_000) });
+    sync.area.getBytesInUse = async (keys) => keys === null ? 92 * 1024 : 2 * 1024;
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+    await expect(provider.push(createDefaultSnapshot())).resolves.toMatchObject({ kind: 'warning' });
+  });
+
   it('subscribes only to sync storage changes', () => {
     const sync = fakeSync();
     const provider = new EdgeSyncProvider(sync.area, sync.changes);
@@ -199,5 +226,13 @@ describe('mergeSnapshots', () => {
     ];
     const merged = mergeSnapshots(local, { ...createDefaultSnapshot(), bookmarks: [] }, now);
     expect(merged.bookmarks.map(({ id }) => id)).toEqual(['recent']);
+  });
+
+  it('keeps a newer local drag order when merging an older remote record', () => {
+    const local = createDefaultSnapshot();
+    local.bookmarks[0] = { ...local.bookmarks[0]!, order: 2, updatedAt: 20 };
+    const remote = createDefaultSnapshot();
+    remote.bookmarks[0] = { ...remote.bookmarks[0]!, order: 0, updatedAt: 10 };
+    expect(mergeSnapshots(local, remote).bookmarks.find(({ id }) => id === 'github')).toMatchObject({ order: 2, updatedAt: 20 });
   });
 });

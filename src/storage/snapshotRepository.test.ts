@@ -52,4 +52,12 @@ describe('SnapshotRepository', () => {
 
     await expect(repository.load()).rejects.toThrow('Unsupported snapshot schema version: 2');
   });
+
+  it('fails closed when a supported snapshot contains unsafe nested data', async () => {
+    const storage = fakeChromeStorage();
+    const damaged = createDefaultSnapshot();
+    damaged.bookmarks[0]!.url = 'javascript:alert(1)';
+    await storage.set({ 'app:snapshot': damaged });
+    await expect(new SnapshotRepository(storage).load()).rejects.toThrow('Corrupted local snapshot');
+  });
 });

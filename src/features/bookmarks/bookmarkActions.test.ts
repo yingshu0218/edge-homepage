@@ -36,12 +36,23 @@ describe('bookmark actions', () => {
 
   it('assigns stable contiguous order values after dragging', () => {
     const source = createDefaultSnapshot();
-    const reordered = reorderBookmarks(source, 'npm', 'mdn');
+    const reordered = reorderBookmarks(source, 'npm', 'mdn', 42);
 
     expect(reordered.bookmarks.map(({ id, order }) => [id, order])).toEqual([
       ['github', 0], ['mdn', 2], ['stackoverflow', 3], ['npm', 1],
     ]);
     expect(source.bookmarks.map(({ order }) => order)).toEqual([0, 1, 2, 3]);
+    expect(reordered.bookmarks.filter((bookmark, index) => bookmark.order !== source.bookmarks[index]!.order).every(({ updatedAt }) => updatedAt === 42)).toBe(true);
+  });
+
+  it('reorders groups and timestamps every changed order', async () => {
+    const { reorderGroups } = await import('./bookmarkActions');
+    const source = createDefaultSnapshot();
+    source.groups.push({ id: 'other', name: 'Other', order: 1, updatedAt: 0 });
+    const next = reorderGroups(source, 'other', 'development', 77);
+    expect(next.groups.map(({ id, order, updatedAt }) => [id, order, updatedAt])).toEqual([
+      ['development', 1, 77], ['other', 0, 77],
+    ]);
   });
 
   it('moves active bookmarks before deleting their group', () => {
@@ -53,6 +64,16 @@ describe('bookmark actions', () => {
     expect(next.groups.find(({ id }) => id === 'development')?.deletedAt).toBe(50);
     expect(next.bookmarks.every(({ groupId }) => groupId === 'other')).toBe(true);
     expect(next.bookmarks.map(({ order }) => order)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('normalizes surviving group order and timestamps changed records after deletion', () => {
+    const source = createDefaultSnapshot();
+    source.groups.unshift({ id: 'first', name: 'First', order: 0, updatedAt: 0 });
+    source.groups[1]!.order = 1;
+    source.groups.push({ id: 'last', name: 'Last', order: 2, updatedAt: 0 });
+    const next = deleteGroup(source, 'first', 'development', 88);
+    expect(next.groups.find(({ id }) => id === 'development')).toMatchObject({ order: 0, updatedAt: 88 });
+    expect(next.groups.find(({ id }) => id === 'last')).toMatchObject({ order: 1, updatedAt: 88 });
   });
 
   it('appends a bookmark after sparse order values and normalizes the group', () => {

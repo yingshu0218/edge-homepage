@@ -20,6 +20,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .sync-chip, .icon-button { min-height: 34px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: inherit; backdrop-filter: blur(18px); }
 .sync-chip { display: flex; align-items: center; gap: 6px; border-radius: 999px; padding: 0 12px; font-size: 11px; }
 .sync-chip > span { width: 6px; height: 6px; border-radius: 50%; background: #78efbd; box-shadow: 0 0 10px #78efbd; }
+.sync-chip:not(.sync-synced) > span { background: #d7b36a; box-shadow: none; }.sync-chip.sync-error > span { background: #e78383; }
 .sync-chip p { margin: 0; display: inline; }
 .icon-button { width: 34px; border-radius: 50%; cursor: pointer; }
 .workspace { width: min(1040px, 100%); margin: clamp(58px, 9vh, 110px) auto 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(240px, .75fr); gap: 28px; align-items: start; }
@@ -50,7 +51,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .new-bookmark-card { min-height: 112px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 15px; border: 1px dashed rgba(255,255,255,.3); border-radius: 15px; background: rgba(255,255,255,.035); color: rgba(255,255,255,.68); text-align: left; cursor: pointer; }
 .new-bookmark-card:hover { background: rgba(255,255,255,.09); color: white; }.new-bookmark-card b { font-size: 20px; font-weight: 300; }.new-bookmark-card span { margin-top: 8px; font-size: 12px; font-weight: 650; }.new-bookmark-card small { margin-top: 4px; color: rgba(255,255,255,.44); font-size: 10px; }
 .group-rail { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
-.group-rail [role="tablist"] { display: flex; gap: 5px; }
+.group-rail .group-tabs, .group-rail [role="tablist"], .group-actions { display: flex; align-items: center; gap: 5px; }.group-action { padding: 5px 4px !important; opacity: .55; }.group-action:hover, .group-action:focus-visible { opacity: 1; }
 .group-rail button { border: 0; border-radius: 999px; padding: 7px 10px; background: transparent; color: rgba(255,255,255,.52); font-size: 11px; cursor: pointer; }
 .group-rail [aria-selected="true"] { background: rgba(255,255,255,.12); color: white; }
 .mood-card { padding: 24px; border: 1px solid rgba(255,255,255,.16); border-radius: 20px; background: rgba(255,255,255,.075); backdrop-filter: blur(24px); box-shadow: 0 24px 60px rgba(6,4,14,.18); }
