@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ChangeEvent } from 'react';
+import { useEffect, useId, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 
 import type { AppSnapshot } from '../../domain/models';
 import type { SyncState } from '../../sync/types';
@@ -31,12 +31,15 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
   const importId = useId();
   const [mode, setMode] = useState<ImportMode>('replace');
   const [parameters, setParameters] = useState({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
+  const [searchDraft, setSearchDraft] = useState(snapshot.settings.searchTemplate);
+  const [searchError, setSearchError] = useState<string>();
   const [error, setError] = useState<string>();
   const [pendingImport, setPendingImport] = useState<{ text: string; mode: ImportMode; groups: number; bookmarks: number }>();
 
   useEffect(() => {
     setParameters({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
   }, [snapshot.settings.overlay, snapshot.settings.blur]);
+  useEffect(() => { setSearchDraft(snapshot.settings.searchTemplate); setSearchError(undefined); }, [snapshot.settings.searchTemplate]);
 
   const changeParameter = (name: 'overlay' | 'blur', value: number) => {
     const next = { ...parameters, [name]: value };
@@ -55,13 +58,30 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : '导入失败'); }
   };
+  const commitSearchTemplate = () => {
+    if (!searchDraft.includes('%s')) { setSearchError('搜索地址必须包含 %s 占位符'); return; }
+    try {
+      const url = new URL(searchDraft.replace('%s', 'query'));
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsafe protocol');
+    } catch {
+      setSearchError('请输入有效的 HTTP 或 HTTPS 搜索地址');
+      return;
+    }
+    setSearchError(undefined);
+    if (searchDraft !== snapshot.settings.searchTemplate) onSearchTemplateChange(searchDraft);
+  };
+  const searchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') { event.preventDefault(); commitSearchTemplate(); }
+  };
 
   return (
     <section aria-label="设置">
       <h2>设置</h2>
       <label>搜索引擎
-        <input value={snapshot.settings.searchTemplate} onChange={(event) => onSearchTemplateChange(event.target.value)} />
+        <input value={searchDraft} aria-invalid={searchError ? 'true' : undefined} aria-describedby={searchError ? `${importId}-search-error` : undefined}
+          onChange={(event) => { setSearchDraft(event.target.value); setSearchError(undefined); }} onBlur={commitSearchTemplate} onKeyDown={searchKeyDown} />
       </label>
+      {searchError && <p id={`${importId}-search-error`} role="alert">{searchError}</p>}
       <label>遮罩强度
         <input type="range" min="0" max="1" step="0.05" value={parameters.overlay} onChange={(event) => changeParameter('overlay', Number(event.target.value))} />
       </label>
@@ -75,7 +95,7 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
       </fieldset>
       <label htmlFor={importId}>导入备份</label>
       <input id={importId} type="file" accept="application/json,.json" onChange={importFile} />
-      {pendingImport && <div className="import-confirm" role="dialog" aria-label="确认导入">
+      {pendingImport && <div className="import-confirm" role="region" aria-label="确认导入">
         <strong>确认{pendingImport.mode === 'replace' ? '替换' : '合并'}导入</strong>
         <p>{pendingImport.groups} 个分组 · {pendingImport.bookmarks} 个书签</p>
         <button type="button" onClick={async () => { const pending = pendingImport; setPendingImport(undefined); await onImport(pending.text, pending.mode); }}>确认导入</button>

@@ -24,11 +24,33 @@ describe('SettingsPanel', () => {
     );
 
     fireEvent.change(screen.getByLabelText('搜索引擎'), { target: { value: 'https://www.bing.com/search?q=%s' } });
+    fireEvent.blur(screen.getByLabelText('搜索引擎'));
     fireEvent.change(screen.getByLabelText('遮罩强度'), { target: { value: '0.5' } });
     fireEvent.change(screen.getByLabelText('模糊强度'), { target: { value: '8' } });
 
     expect(onSearchTemplateChange).toHaveBeenCalledWith('https://www.bing.com/search?q=%s');
     expect(onThemeParametersChange).toHaveBeenCalledWith({ overlay: 0.5, blur: 8 });
+  });
+
+  it('keeps search edits as a draft and rejects incomplete or unsafe templates', () => {
+    const onSearchTemplateChange = vi.fn();
+    render(<SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={onSearchTemplateChange} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
+    const input = screen.getByLabelText('搜索引擎');
+
+    const original = createDefaultSnapshot().settings.searchTemplate;
+    for (let length = original.length - 1; length >= 0; length -= 1) {
+      fireEvent.change(input, { target: { value: original.slice(0, length) } });
+      expect(onSearchTemplateChange).not.toHaveBeenCalled();
+    }
+    fireEvent.blur(input);
+    expect(screen.getByRole('alert')).toHaveTextContent('%s');
+    fireEvent.change(input, { target: { value: 'https://bing.com/search?q=query' } });
+    fireEvent.blur(input);
+    expect(onSearchTemplateChange).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: 'javascript:%s' } });
+    fireEvent.blur(input);
+    expect(screen.getByRole('alert')).toHaveTextContent('HTTP');
+    expect(onSearchTemplateChange).not.toHaveBeenCalled();
   });
 
   it('tracks imported preference props without writing a stale sibling value', () => {
@@ -59,8 +81,8 @@ describe('SettingsPanel', () => {
     const text = await exportSnapshot(createDefaultSnapshot()).text();
     fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([text], 'backup.json', { type: 'application/json' })] } });
 
-    expect(await screen.findByRole('dialog', { name: '确认导入' })).toHaveTextContent('合并');
-    expect(screen.getByRole('dialog', { name: '确认导入' })).toHaveTextContent('1 个分组 · 4 个书签');
+    expect(await screen.findByRole('region', { name: '确认导入' })).toHaveTextContent('合并');
+    expect(screen.getByRole('region', { name: '确认导入' })).toHaveTextContent('1 个分组 · 4 个书签');
     expect(onImport).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '确认导入' }));
     await waitFor(() => expect(onImport).toHaveBeenCalledWith(text, 'merge'));
@@ -71,7 +93,7 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={onImport} onExport={vi.fn()} onReset={vi.fn()} />);
     const text = await exportSnapshot(createDefaultSnapshot()).text();
     fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([text], 'backup.json')] } });
-    await screen.findByRole('dialog', { name: '确认导入' });
+    await screen.findByRole('region', { name: '确认导入' });
     fireEvent.click(screen.getByRole('button', { name: '取消导入' }));
     expect(onImport).not.toHaveBeenCalled();
   });

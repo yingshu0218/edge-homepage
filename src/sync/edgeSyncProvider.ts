@@ -163,18 +163,50 @@ function mergeRecords<T extends { id: string; updatedAt: number; deletedAt?: num
   const records = new Map<string, T>();
   for (const record of [...local, ...remote]) {
     const current = records.get(record.id);
-    if (!current || record.updatedAt > current.updatedAt || (record.updatedAt === current.updatedAt && (record.deletedAt ?? 0) > (current.deletedAt ?? 0))) {
+    const sameRevisionWinner = record.updatedAt === current?.updatedAt && (record.deletedAt ?? 0) === (current?.deletedAt ?? 0)
+      && stableRecord(record) > stableRecord(current);
+    if (!current || record.updatedAt > current.updatedAt || (record.updatedAt === current.updatedAt && (record.deletedAt ?? 0) > (current.deletedAt ?? 0)) || sameRevisionWinner) {
       records.set(record.id, record);
     }
   }
-  return [...records.values()].filter((record) => !record.deletedAt || now - record.deletedAt <= TOMBSTONE_TTL);
+  return [...records.values()].filter((record) => !record.deletedAt || now - record.deletedAt <= TOMBSTONE_TTL).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function stableRecord(value: object): string {
+  return JSON.stringify(Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right))));
+}
+
+function normalizeActiveOrder<T extends { id: string; order: number; updatedAt: number; deletedAt?: number }>(records: T[]): T[] {
+  const active = records.filter(({ deletedAt }) => deletedAt === undefined).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const orders = new Map(active.map(({ id }, index) => [id, index]));
+  const revision = Math.max(0, ...records.map(({ updatedAt }) => updatedAt)) + 1;
+  return records.map((record) => orders.has(record.id) && record.order !== orders.get(record.id)
+    ? { ...record, order: orders.get(record.id)!, updatedAt: revision } : record).sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function normalizeMergedSnapshot(snapshot: AppSnapshot): AppSnapshot {
+  const groups = normalizeActiveOrder(snapshot.groups);
+  const deletedGroups = new Map(groups.filter(({ deletedAt }) => deletedAt !== undefined).map((group) => [group.id, group]));
+  const orphanRevision = Math.max(0, ...snapshot.bookmarks.map(({ updatedAt }) => updatedAt), ...groups.map(({ updatedAt }) => updatedAt)) + 1;
+  let bookmarks = snapshot.bookmarks.map((bookmark) => bookmark.deletedAt === undefined && deletedGroups.has(bookmark.groupId)
+    ? { ...bookmark, deletedAt: orphanRevision, updatedAt: orphanRevision } : bookmark);
+  for (const group of groups) {
+    const inGroup = bookmarks.filter(({ groupId }) => groupId === group.id);
+    const normalized = new Map(normalizeActiveOrder(inGroup).map((bookmark) => [bookmark.id, bookmark]));
+    bookmarks = bookmarks.map((bookmark) => normalized.get(bookmark.id) ?? bookmark);
+  }
+  return { ...snapshot, groups, bookmarks: bookmarks.sort((a, b) => a.id.localeCompare(b.id)) };
 }
 
 export function mergeSnapshots(local: AppSnapshot, remote: AppSnapshot, now = Date.now()): AppSnapshot {
-  return {
+  const settings = remote.settings.updatedAt > local.settings.updatedAt
+    || (remote.settings.updatedAt === local.settings.updatedAt && stableRecord(remote.settings) > stableRecord(local.settings))
+    ? remote.settings : local.settings;
+  const merged = normalizeMergedSnapshot({
     schemaVersion: 1,
     bookmarks: mergeRecords(local.bookmarks, remote.bookmarks, now),
     groups: mergeRecords(local.groups, remote.groups, now),
-    settings: remote.settings.updatedAt > local.settings.updatedAt ? remote.settings : local.settings,
-  };
+    settings,
+  });
+  return validateSnapshot(merged, 'merged snapshot');
 }

@@ -159,6 +159,22 @@ describe('new tab application', () => {
     expect(screen.getByLabelText('导入备份')).toBeInTheDocument();
   });
 
+  it('persists only a committed valid search template', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    const input = screen.getByLabelText('搜索引擎');
+    fireEvent.change(input, { target: { value: 'https://bing.com/search?q=query' } });
+    fireEvent.blur(input);
+    expect(services.coordinator.saveAndSync).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: 'https://bing.com/search?q=%s' } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(services.coordinator.saveAndSync).toHaveBeenCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ searchTemplate: 'https://bing.com/search?q=%s' }),
+    })));
+  });
+
   it('closes drawers with Escape, restores focus, and atomically leaves a custom background', async () => {
     const snapshot = createDefaultSnapshot();
     snapshot.settings.useCustomBackground = true;

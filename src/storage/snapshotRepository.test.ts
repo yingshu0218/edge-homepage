@@ -60,4 +60,17 @@ describe('SnapshotRepository', () => {
     await storage.set({ 'app:snapshot': damaged });
     await expect(new SnapshotRepository(storage).load()).rejects.toThrow('Corrupted local snapshot');
   });
+
+  it('rejects an invalid save without overwriting the last valid snapshot', async () => {
+    const storage = fakeChromeStorage();
+    const repository = new SnapshotRepository(storage);
+    const valid = createDefaultSnapshot();
+    valid.settings.themeId = 'kept';
+    await repository.save(valid);
+    const invalid = structuredClone(valid);
+    invalid.settings.searchTemplate = 'not a URL';
+    await expect(repository.save(invalid)).rejects.toThrow('Corrupted local snapshot');
+    expect((await repository.load()).settings.themeId).toBe('kept');
+    expect((await repository.load()).settings.searchTemplate).toBe(valid.settings.searchTemplate);
+  });
 });

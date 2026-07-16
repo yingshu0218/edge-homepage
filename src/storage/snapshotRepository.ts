@@ -21,6 +21,6 @@ export class SnapshotRepository implements SnapshotStorage {
   }
 
   async save(snapshot: AppSnapshot): Promise<void> {
-    await this.storage.set({ [SNAPSHOT_KEY]: snapshot });
+    await this.storage.set({ [SNAPSHOT_KEY]: validateSnapshot(snapshot, 'local snapshot') });
   }
 }

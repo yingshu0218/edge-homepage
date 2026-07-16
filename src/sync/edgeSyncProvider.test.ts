@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot } from '../domain/models';
 import { EdgeSyncProvider, mergeSnapshots } from './edgeSyncProvider';
+import { validateSnapshot } from '../domain/snapshotValidator';
+import { SnapshotRepository } from '../storage/snapshotRepository';
+import { reorderBookmarks } from '../features/bookmarks/bookmarkActions';
 
 type ChangeListener = (changes: Record<string, unknown>, areaName: string) => void;
 
@@ -229,10 +232,49 @@ describe('mergeSnapshots', () => {
   });
 
   it('keeps a newer local drag order when merging an older remote record', () => {
-    const local = createDefaultSnapshot();
-    local.bookmarks[0] = { ...local.bookmarks[0]!, order: 2, updatedAt: 20 };
+    const local = reorderBookmarks(createDefaultSnapshot(), 'github', 'stackoverflow', 20);
     const remote = createDefaultSnapshot();
-    remote.bookmarks[0] = { ...remote.bookmarks[0]!, order: 0, updatedAt: 10 };
     expect(mergeSnapshots(local, remote).bookmarks.find(({ id }) => id === 'github')).toMatchObject({ order: 2, updatedAt: 20 });
+  });
+
+  it('normalizes concurrent same-tail bookmark additions into a valid stable merge', async () => {
+    const left = createDefaultSnapshot();
+    const right = createDefaultSnapshot();
+    left.bookmarks.push({ id: 'zeta', title: 'Zeta', url: 'https://zeta.test/', groupId: 'development', order: 4, createdAt: 10, updatedAt: 10 });
+    right.bookmarks.push({ id: 'alpha', title: 'Alpha', url: 'https://alpha.test/', groupId: 'development', order: 4, createdAt: 10, updatedAt: 10 });
+
+    const merged = mergeSnapshots(left, right, 20);
+    expect(() => validateSnapshot(merged, 'merged test')).not.toThrow();
+    expect(merged.bookmarks.filter(({ deletedAt }) => !deletedAt).sort((a, b) => a.order - b.order).slice(-2).map(({ id }) => id)).toEqual(['alpha', 'zeta']);
+    expect(mergeSnapshots(merged, right, 20)).toEqual(merged);
+    expect(mergeSnapshots(right, merged, 20)).toEqual(merged);
+
+    const values: Record<string, unknown> = {};
+    const repository = new SnapshotRepository({
+      async get(key) { return typeof key === 'string' && key in values ? { [key]: values[key] } : {}; },
+      async set(items) { Object.assign(values, items); },
+    });
+    await repository.save(merged);
+    expect(await repository.load()).toEqual(merged);
+  });
+
+  it('normalizes concurrent group additions and moves deterministically', () => {
+    const left = createDefaultSnapshot();
+    left.groups.push({ id: 'zeta-group', name: 'Zeta', order: 1, updatedAt: 10 });
+    left.bookmarks = left.bookmarks.map((bookmark) => bookmark.id === 'mdn'
+      ? { ...bookmark, groupId: 'zeta-group', order: 0, updatedAt: 10 }
+      : bookmark.id === 'stackoverflow' ? { ...bookmark, order: 1 } : bookmark.id === 'npm' ? { ...bookmark, order: 2 } : bookmark);
+    const right = createDefaultSnapshot();
+    right.groups.push({ id: 'alpha-group', name: 'Alpha', order: 1, updatedAt: 10 });
+    right.bookmarks = right.bookmarks.map((bookmark) => bookmark.id === 'npm'
+      ? { ...bookmark, groupId: 'alpha-group', order: 0, updatedAt: 10 }
+      : bookmark);
+
+    const forward = mergeSnapshots(left, right, 20);
+    const reverse = mergeSnapshots(right, left, 20);
+    expect(() => validateSnapshot(forward, 'merged test')).not.toThrow();
+    expect(reverse).toEqual(forward);
+    expect(forward.groups.filter(({ deletedAt }) => !deletedAt).sort((a, b) => a.order - b.order).map(({ id }) => id)).toEqual(['development', 'alpha-group', 'zeta-group']);
+    expect(mergeSnapshots(forward, reverse, 20)).toEqual(forward);
   });
 });
