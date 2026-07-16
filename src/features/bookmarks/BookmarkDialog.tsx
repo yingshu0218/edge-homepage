@@ -72,7 +72,7 @@ export function BookmarkDialog({ open, groups, searchTemplate, bookmark, onSave,
   }
 
   return (
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="bookmark-dialog-title" onKeyDown={handleKeyDown}>
+    <div ref={dialogRef} className="bookmark-dialog" role="dialog" aria-modal="true" aria-labelledby="bookmark-dialog-title" onKeyDown={handleKeyDown}>
       <form onSubmit={submit}>
         <h2 id="bookmark-dialog-title">{bookmark ? 'Edit bookmark' : 'Add bookmark'}</h2>
         <label>Title<input ref={titleRef} required value={title} onChange={(event) => setTitle(event.target.value)} /></label>

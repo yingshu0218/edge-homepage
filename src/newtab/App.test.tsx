@@ -128,17 +128,31 @@ describe('new tab application', () => {
     const themeTrigger = screen.getByRole('button', { name: '主题' });
     fireEvent.click(themeTrigger);
     await waitFor(() => expect(screen.getByRole('button', { name: '关闭主题' })).toHaveFocus());
+    const themeDialog = screen.getByRole('dialog', { name: '主题设置' });
+    const themeFocusable = themeDialog.querySelectorAll<HTMLElement>('input:not([disabled]), button:not([disabled])');
+    themeFocusable.item(themeFocusable.length - 1).focus();
+    fireEvent.keyDown(themeDialog, { key: 'Tab' });
+    expect(themeFocusable.item(0)).toHaveFocus();
+    fireEvent.keyDown(themeDialog, { key: 'Tab', shiftKey: true });
+    expect(themeFocusable.item(themeFocusable.length - 1)).toHaveFocus();
     fireEvent.click(screen.getByRole('listitem', { name: '极光' }));
     await waitFor(() => expect(services.coordinator.saveAndSync).toHaveBeenLastCalledWith(expect.objectContaining({
       settings: expect.objectContaining({ themeId: 'aurora', useCustomBackground: false }),
     })));
-    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.keyDown(themeDialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: '主题设置' })).not.toBeInTheDocument();
     await waitFor(() => expect(themeTrigger).toHaveFocus());
 
     const settingsTrigger = screen.getByRole('button', { name: '设置' });
     fireEvent.click(settingsTrigger);
-    fireEvent.keyDown(window, { key: 'Escape' });
+    const settingsDialog = screen.getByRole('dialog', { name: '应用设置' });
+    const settingsFocusable = settingsDialog.querySelectorAll<HTMLElement>('input:not([disabled]), button:not([disabled])');
+    settingsFocusable.item(settingsFocusable.length - 1).focus();
+    fireEvent.keyDown(settingsDialog, { key: 'Tab' });
+    expect(settingsFocusable.item(0)).toHaveFocus();
+    fireEvent.keyDown(settingsDialog, { key: 'Tab', shiftKey: true });
+    expect(settingsFocusable.item(settingsFocusable.length - 1)).toHaveFocus();
+    fireEvent.keyDown(settingsDialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: '应用设置' })).not.toBeInTheDocument();
     await waitFor(() => expect(settingsTrigger).toHaveFocus());
   });

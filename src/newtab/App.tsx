@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot, Bookmark } from '../domain/models';
@@ -32,6 +32,7 @@ export type AppServices = {
 };
 
 type Drawer = 'theme' | 'settings' | null;
+const focusableSelector = 'input:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
 const timeFormatter = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -56,6 +57,7 @@ export function App({ services }: { services: AppServices }) {
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   const snapshotRef = useRef<AppSnapshot | undefined>(undefined);
 
   const acceptSnapshot = useCallback((next: AppSnapshot) => {
@@ -124,14 +126,7 @@ export function App({ services }: { services: AppServices }) {
   useEffect(() => {
     if (!drawer) return;
     drawerCloseRef.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setDrawer(null);
-    };
-    window.addEventListener('keydown', closeOnEscape);
     return () => {
-      window.removeEventListener('keydown', closeOnEscape);
       drawerTriggerRef.current?.focus();
     };
   }, [drawer]);
@@ -139,6 +134,26 @@ export function App({ services }: { services: AppServices }) {
   const openDrawer = (next: Exclude<Drawer, null>, trigger: HTMLButtonElement | null) => {
     drawerTriggerRef.current = trigger;
     setDrawer(next);
+  };
+
+  const handleDrawerKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setDrawer(null);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(drawerRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) return;
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    }
   };
 
   const persist = useCallback(async (next: AppSnapshot) => {
@@ -251,7 +266,7 @@ export function App({ services }: { services: AppServices }) {
       <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
 
       {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
-        <aside className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : '应用设置'}>
+        <aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : '应用设置'} onKeyDown={handleDrawerKeyDown}>
           <header><h2>{drawer === 'theme' ? '主题' : '设置'}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
           {drawer === 'theme' ? <ThemePicker
             selectedThemeId={snapshot.settings.themeId}

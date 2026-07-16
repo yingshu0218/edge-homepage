@@ -61,11 +61,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .mood-card dl { margin: 12px 0 0; font-size: 11px; }
 .mood-card dl div { display: flex; justify-content: space-between; padding: 7px 0; }
 .mood-card dt { color: rgba(255,255,255,.88); }.mood-card dd { margin: 0; color: rgba(255,255,255,.48); }.mood-card .success { color: #9bf0c9; }
-[role="dialog"] { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(5,4,12,.68); backdrop-filter: blur(8px); }
-[role="dialog"] form { width: min(430px,100%); padding: 26px; border: 1px solid rgba(255,255,255,.18); border-radius: 20px; background: #201c32; box-shadow: 0 28px 80px #05030a99; }
-[role="dialog"] h2 { margin: 0 0 20px; } [role="dialog"] label { display: grid; gap: 7px; margin: 13px 0; font-size: 12px; color: rgba(255,255,255,.72); }
-[role="dialog"] input, [role="dialog"] select, .drawer input:not([type="range"]), .drawer select { width: 100%; min-height: 42px; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; padding: 0 11px; background: rgba(255,255,255,.07); color: white; }
-[role="dialog"] button { margin: 12px 8px 0 0; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+.bookmark-dialog { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(5,4,12,.68); backdrop-filter: blur(8px); }
+.bookmark-dialog form { width: min(430px,100%); padding: 26px; border: 1px solid rgba(255,255,255,.18); border-radius: 20px; background: #201c32; box-shadow: 0 28px 80px #05030a99; }
+.bookmark-dialog h2 { margin: 0 0 20px; } .bookmark-dialog label { display: grid; gap: 7px; margin: 13px 0; font-size: 12px; color: rgba(255,255,255,.72); }
+.bookmark-dialog input, .bookmark-dialog select, .drawer input:not([type="range"]), .drawer select { width: 100%; min-height: 42px; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; padding: 0 11px; background: rgba(255,255,255,.07); color: white; }
+.bookmark-dialog button { margin: 12px 8px 0 0; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; }
 .drawer-scrim { position: fixed; inset: 0; z-index: 15; display: flex; justify-content: flex-end; background: rgba(5,4,12,.45); backdrop-filter: blur(5px); }
 .drawer { width: min(430px, 100%); height: 100%; overflow: auto; padding: 28px; border-left: 1px solid rgba(255,255,255,.15); background: rgba(25,21,41,.96); box-shadow: -30px 0 80px rgba(4,3,10,.3); }
 .drawer > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }.drawer > header h2 { margin: 0; }
