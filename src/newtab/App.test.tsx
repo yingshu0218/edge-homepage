@@ -118,6 +118,31 @@ describe('new tab application', () => {
     expect(screen.getByLabelText('导入备份')).toBeInTheDocument();
   });
 
+  it('closes drawers with Escape, restores focus, and atomically leaves a custom background', async () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.settings.useCustomBackground = true;
+    const services = fakeServices(snapshot);
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+
+    const themeTrigger = screen.getByRole('button', { name: '主题' });
+    fireEvent.click(themeTrigger);
+    await waitFor(() => expect(screen.getByRole('button', { name: '关闭主题' })).toHaveFocus());
+    fireEvent.click(screen.getByRole('listitem', { name: '极光' }));
+    await waitFor(() => expect(services.coordinator.saveAndSync).toHaveBeenLastCalledWith(expect.objectContaining({
+      settings: expect.objectContaining({ themeId: 'aurora', useCustomBackground: false }),
+    })));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '主题设置' })).not.toBeInTheDocument();
+    await waitFor(() => expect(themeTrigger).toHaveFocus());
+
+    const settingsTrigger = screen.getByRole('button', { name: '设置' });
+    fireEvent.click(settingsTrigger);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '应用设置' })).not.toBeInTheDocument();
+    await waitFor(() => expect(settingsTrigger).toHaveFocus());
+  });
+
   it('clears the local background before resetting the snapshot', async () => {
     const snapshot = createDefaultSnapshot();
     snapshot.settings.useCustomBackground = true;

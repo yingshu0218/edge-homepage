@@ -52,6 +52,10 @@ export function App({ services }: { services: AppServices }) {
   const [editing, setEditing] = useState<Bookmark>();
   const [drawer, setDrawer] = useState<Drawer>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
+  const themeButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const snapshotRef = useRef<AppSnapshot | undefined>(undefined);
 
   const acceptSnapshot = useCallback((next: AppSnapshot) => {
@@ -116,6 +120,26 @@ export function App({ services }: { services: AppServices }) {
     applyResolvedTheme(resolved);
     return () => { if (resolved.isCustom) URL.revokeObjectURL(resolved.imageUrl); };
   }, [customBackground, snapshot]);
+
+  useEffect(() => {
+    if (!drawer) return;
+    drawerCloseRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setDrawer(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      drawerTriggerRef.current?.focus();
+    };
+  }, [drawer]);
+
+  const openDrawer = (next: Exclude<Drawer, null>, trigger: HTMLButtonElement | null) => {
+    drawerTriggerRef.current = trigger;
+    setDrawer(next);
+  };
 
   const persist = useCallback(async (next: AppSnapshot) => {
     acceptSnapshot(next);
@@ -185,8 +209,8 @@ export function App({ services }: { services: AppServices }) {
         <a className="brand" href="index.html" aria-label="Day Start 首页">DAY<span>/</span>START</a>
         <nav className="top-actions" aria-label="启动页操作">
           <div className="sync-chip"><span aria-hidden="true" />Microsoft · <SyncStatus state={syncState} /></div>
-          <button className="icon-button" type="button" aria-label="主题" onClick={() => setDrawer('theme')}>◐</button>
-          <button className="icon-button" type="button" aria-label="设置" onClick={() => setDrawer('settings')}>⚙</button>
+          <button ref={themeButtonRef} className="icon-button" type="button" aria-label="主题" onClick={() => openDrawer('theme', themeButtonRef.current)}>◐</button>
+          <button ref={settingsButtonRef} className="icon-button" type="button" aria-label="设置" onClick={() => openDrawer('settings', settingsButtonRef.current)}>⚙</button>
         </nav>
       </header>
 
@@ -227,13 +251,13 @@ export function App({ services }: { services: AppServices }) {
       <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
 
       {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
-        <aside className="drawer" aria-label={drawer === 'theme' ? '主题设置' : '应用设置'}>
-          <header><h2>{drawer === 'theme' ? '主题' : '设置'}</h2><button className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
+        <aside className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : '应用设置'}>
+          <header><h2>{drawer === 'theme' ? '主题' : '设置'}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
           {drawer === 'theme' ? <ThemePicker
             selectedThemeId={snapshot.settings.themeId}
             useCustomBackground={snapshot.settings.useCustomBackground}
             backgroundStore={services.backgrounds}
-            onThemeChange={(themeId) => updateSettings({ themeId })}
+            onThemeChange={(themeId) => updateSettings({ themeId, useCustomBackground: false })}
             onCustomBackgroundChange={(enabled) => {
               updateSettings({ useCustomBackground: enabled });
               if (enabled) void services.backgrounds.get().then(setCustomBackground);

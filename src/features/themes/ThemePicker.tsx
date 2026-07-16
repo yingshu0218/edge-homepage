@@ -95,6 +95,7 @@ export function ThemePicker({
             key={theme.id}
             type="button"
             role="listitem"
+            aria-label={theme.name}
             aria-pressed={!useCustomBackground && selectedThemeId === theme.id}
             onClick={() => selectBuiltInTheme(theme.id)}
           >
