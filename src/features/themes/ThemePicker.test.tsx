@@ -7,6 +7,19 @@ import { processCustomBackground, ThemePicker, validateBackgroundFile } from './
 afterEach(cleanup);
 
 describe('custom background upload', () => {
+  it('shows selection details and emits appearance controls', () => {
+    const change = vi.fn();
+    render(<ThemePicker selectedThemeId="aurora" useCustomBackground={false} appearance="dark" overlay={0.38} blur={0} onThemeChange={vi.fn()} onCustomBackgroundChange={vi.fn()} onAppearanceChange={change} />);
+    expect(screen.getByRole('listitem', { name: '极光' })).toHaveTextContent('已选择');
+    expect(screen.getByLabelText('极光强调色')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('外观模式'), { target: { value: 'light' } });
+    expect(change).toHaveBeenCalledWith({ appearance: 'light' });
+    fireEvent.change(screen.getByRole('slider', { name: '遮罩强度' }), { target: { value: '0.5' } });
+    expect(change).toHaveBeenCalledWith({ overlay: 0.5 });
+    fireEvent.change(screen.getByRole('slider', { name: '背景模糊' }), { target: { value: '8' } });
+    expect(change).toHaveBeenCalledWith({ blur: 8 });
+  });
+
   it('accepts supported image formats and rejects unsupported files', () => {
     expect(() => validateBackgroundFile(new File(['x'], 'scene.avif', { type: 'image/avif' }))).not.toThrow();
     expect(() => validateBackgroundFile(new File(['x'], 'scene.gif', { type: 'image/gif' }))).toThrow(

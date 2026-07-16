@@ -7,6 +7,10 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; min-width: 320px; min-height: 100%; margin: 0; }
 body { overflow-x: hidden; }
+[data-appearance="light"] { color: #182333; background: #e7edf4; }
+[data-appearance="light"] .app-shell::before { background: rgba(244,248,252,var(--theme-overlay,.38)); }
+[data-appearance="light"] .sync-chip,[data-appearance="light"] .icon-button,[data-appearance="light"] [data-bookmark-id],[data-appearance="light"] .mood-card { border-color: rgba(21,38,58,.16); background: rgba(255,255,255,.52); color: #182333; }
+[data-appearance="light"] [data-bookmark-id] small,[data-appearance="light"] .date-line,[data-appearance="light"] .section-heading > div,[data-appearance="light"] .group-rail button { color: rgba(24,35,51,.62); }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--theme-accent-color, #8ee7d0); outline-offset: 3px; }
@@ -40,7 +44,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-bookmark-id] { position: relative; min-height: 112px; padding: 15px; border: 1px solid rgba(255,255,255,.15); border-radius: 15px; background: rgba(255,255,255,.085); backdrop-filter: blur(18px); transition: transform .18s ease, background .18s ease; }
 [data-bookmark-id]:hover { transform: translateY(-2px); background: rgba(255,255,255,.14); }
 [data-bookmark-id] a { display: flex; height: 100%; flex-direction: column; color: inherit; text-decoration: none; }
-[data-bookmark-id] a::before { content: attr(href); display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 13px; overflow: hidden; border-radius: 9px; background: rgba(255,255,255,.14); color: transparent; }
+.bookmark-icon { display: grid; place-items: center; width: 30px; height: 30px; margin-bottom: 12px; overflow: hidden; border-radius: 9px; color: white; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); }
+.bookmark-icon img { width: 100%; height: 100%; object-fit: cover; background: white; }.bookmark-icon b { font-size: 13px; }
 [data-bookmark-id] span { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [data-bookmark-id] small { margin-top: 4px; color: rgba(255,255,255,.5); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [data-bookmark-id] button { position: absolute; top: 8px; opacity: 0; border: 0; background: transparent; color: rgba(255,255,255,.62); font-size: 0; cursor: pointer; }
@@ -75,6 +80,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .drawer [role="listitem"] { overflow: hidden; padding: 0; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; background: rgba(255,255,255,.06); color: white; cursor: pointer; }
 .drawer [role="listitem"] img { width: 100%; height: 86px; display: block; object-fit: cover; }.drawer [role="listitem"] span { display: block; padding: 9px; font-size: 11px; }
 .drawer [aria-pressed="true"] { border-color: var(--theme-accent-color); box-shadow: 0 0 0 1px var(--theme-accent-color); }
+.theme-card-caption { display: flex !important; align-items: center; gap: 7px; }.theme-card-caption b { font-style: normal; }.theme-card-caption i { width: 9px; height: 9px; margin-left: auto; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.35); }.theme-card-caption em { color: var(--theme-accent-color); font-size: 9px; font-style: normal; }
+.theme-controls { margin-top: 22px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,.1); }.theme-controls label { grid-template-columns: 1fr auto; align-items: center; }.theme-controls select,.theme-controls input { grid-column: 1 / -1; }.theme-controls output { color: white; }.custom-background-status { margin: 22px 0 8px; color: rgba(255,255,255,.6); font-size: 11px; }
 .drawer fieldset { margin: 20px 0; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; }.drawer fieldset label { display: flex; }
 .drawer section > button { margin: 12px 8px 0 0; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 10px 13px; background: rgba(255,255,255,.08); color: white; cursor: pointer; }
 .bookmark-sort-panel > p:first-child { margin: 0; color: rgba(255,255,255,.48); font-size: 11px; }
@@ -88,6 +95,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .bookmark-sort-row button { width: 38px; height: 38px; flex: none; border: 1px solid rgba(255,255,255,.12); border-radius: 9px; background: rgba(255,255,255,.06); color: rgba(255,255,255,.72); cursor: grab; touch-action: none; }
 .bookmark-sort-row button:active { cursor: grabbing; }
 .bookmark-sort-empty { padding: 28px 12px; border: 1px dashed rgba(255,255,255,.16); border-radius: 12px; color: rgba(255,255,255,.5); text-align: center; }
+.group-manager form { display: flex; align-items: end; gap: 8px; margin-bottom: 20px; }.group-manager form label { flex: 1; margin: 0 !important; }.group-manager form button { min-height: 42px; border: 0; border-radius: 10px; padding: 0 13px; background: var(--theme-accent-color); color: #10201c; cursor: pointer; }
+.group-manager ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }.group-manager-row { display: flex; align-items: center; gap: 8px; min-height: 64px; padding: 9px; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; background: rgba(255,255,255,.06); }.group-manager-row.is-dragging { background: rgba(255,255,255,.14); }.group-manager-row > button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: rgba(255,255,255,.06); color: white; cursor: pointer; }.group-manager-row .group-drag-handle { cursor: grab; touch-action: none; }.group-manager-copy { min-width: 0; flex: 1; }.group-manager-copy strong,.group-manager-copy small { display: block; }.group-manager-copy small { margin-top: 3px; color: rgba(255,255,255,.45); font-size: 10px; }.group-manager-copy input { width: 100%; }
+.group-delete-confirm { display: grid; gap: 10px; margin-top: 18px; padding: 15px; border: 1px solid rgba(255,170,150,.25); border-radius: 12px; background: rgba(100,30,25,.14); }.group-delete-confirm p { margin: 0; color: rgba(255,255,255,.62); font-size: 11px; }.group-delete-confirm label { margin: 0 !important; }.group-delete-confirm button { min-height: 36px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; background: rgba(255,255,255,.07); color: white; cursor: pointer; }
 .state-shell { min-height: 100vh; display: grid; place-items: center; background: #181529; color: #f5f2fb; }.state-shell section { text-align: center; }
 @media (max-width: 980px) {
   .workspace { grid-template-columns: 1fr; width: min(720px, 100%); margin-top: clamp(44px, 7vh, 72px); }

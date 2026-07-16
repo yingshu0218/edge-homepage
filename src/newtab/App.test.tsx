@@ -194,6 +194,20 @@ describe('new tab application', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
+  it('manages groups in a dedicated drawer and persists inline creation', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    const trigger = screen.getByRole('button', { name: '管理分组' });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('dialog', { name: '分组管理' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('新分组名称'), { target: { value: '阅读' } });
+    fireEvent.click(screen.getByRole('button', { name: '新建分组' }));
+    await waitFor(() => expect(services.coordinator.saveAndSync).toHaveBeenCalledWith(expect.objectContaining({ groups: expect.arrayContaining([expect.objectContaining({ name: '阅读' })]) })));
+    fireEvent.click(screen.getByRole('button', { name: '关闭分组管理' }));
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it('closes drawers with Escape, restores focus, and atomically leaves a custom background', async () => {
     const snapshot = createDefaultSnapshot();
     snapshot.settings.useCustomBackground = true;

@@ -45,18 +45,26 @@ export async function processCustomBackground(file: File): Promise<Blob> {
 export type ThemePickerProps = {
   selectedThemeId: string;
   useCustomBackground: boolean;
+  appearance?: 'light' | 'dark';
+  overlay?: number;
+  blur?: number;
   backgroundStore?: Pick<BackgroundStore, 'put'>;
-  onThemeChange: (themeId: string) => void;
+  onThemeChange: (themeId: string, recommended?: { appearance: 'light' | 'dark'; overlay: number }) => void;
   onCustomBackgroundChange: (enabled: boolean) => void;
+  onAppearanceChange?: (changes: Partial<{ appearance: 'light' | 'dark'; overlay: number; blur: number }>) => void;
   processImage?: BackgroundProcessor;
 };
 
 export function ThemePicker({
   selectedThemeId,
   useCustomBackground,
+  appearance = 'dark',
+  overlay = 0.38,
+  blur = 0,
   backgroundStore = new BackgroundStore(),
   onThemeChange,
   onCustomBackgroundChange,
+  onAppearanceChange = () => undefined,
   processImage = processCustomBackground,
 }: ThemePickerProps) {
   const uploadId = useId();
@@ -64,8 +72,8 @@ export function ThemePicker({
   const [isProcessing, setIsProcessing] = useState(false);
 
   const selectBuiltInTheme = (themeId: string) => {
-    onCustomBackgroundChange(false);
-    onThemeChange(themeId);
+    const theme = BUILT_IN_THEMES.find(({ id }) => id === themeId);
+    onThemeChange(themeId, theme ? { appearance: theme.defaultAppearance, overlay: theme.overlay } : undefined);
   };
 
   const upload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -100,10 +108,16 @@ export function ThemePicker({
             onClick={() => selectBuiltInTheme(theme.id)}
           >
             <img src={theme.imageUrl} alt="" />
-            <span>{theme.name}</span>
+            <span className="theme-card-caption"><b>{theme.name}</b><i aria-label={`${theme.name}强调色`} style={{ backgroundColor: theme.accentColor }} />{!useCustomBackground && selectedThemeId === theme.id && <em>✓ 已选择</em>}</span>
           </button>
         ))}
       </div>
+      <div className="theme-controls">
+        <label>外观模式<select value={appearance} onChange={(event) => onAppearanceChange({ appearance: event.target.value as 'light' | 'dark' })}><option value="dark">深色</option><option value="light">浅色</option></select></label>
+        <label>遮罩强度 <output>{Math.round(overlay * 100)}%</output><input aria-label="遮罩强度" type="range" min="0" max="0.8" step="0.05" value={overlay} onChange={(event) => onAppearanceChange({ overlay: Number(event.target.value) })} /></label>
+        <label>背景模糊 <output>{blur}px</output><input aria-label="背景模糊" type="range" min="0" max="24" step="1" value={blur} onChange={(event) => onAppearanceChange({ blur: Number(event.target.value) })} /></label>
+      </div>
+      <p className="custom-background-status">{useCustomBackground ? '当前使用自定义背景' : '当前使用内置主题'}</p>
       <label htmlFor={uploadId}>{isProcessing ? '正在处理…' : '上传自定义背景'}</label>
       <input
         id={uploadId}

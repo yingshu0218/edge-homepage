@@ -22,17 +22,10 @@ describe('GroupTabs', () => {
     expect(select).toHaveBeenCalledWith('b');
   });
 
-  it('exposes rename/delete actions and drag reordering', () => {
-    const rename = vi.fn(); const remove = vi.fn(); const reorder = vi.fn();
-    render(<GroupTabs groups={groups} activeGroupId="a" onSelect={vi.fn()} onRename={rename} onDelete={remove} onReorder={reorder} />);
-    fireEvent.click(screen.getByRole('button', { name: '重命名 Alpha' }));
-    fireEvent.click(screen.getByRole('button', { name: '删除 Alpha' }));
-    const alpha = screen.getByRole('tab', { name: 'Alpha' });
-    const beta = screen.getByRole('tab', { name: 'Beta' });
-    fireEvent.dragStart(alpha);
-    fireEvent.drop(beta);
-    expect(rename).toHaveBeenCalledWith('a');
-    expect(remove).toHaveBeenCalledWith('a');
-    expect(reorder).toHaveBeenCalledWith('a', 'b');
+  it('keeps tabs focused on selection without management controls', () => {
+    render(<GroupTabs groups={groups} activeGroupId="a" onSelect={vi.fn()} />);
+    expect(screen.getByRole('tab', { name: 'Alpha' })).not.toHaveAttribute('draggable');
+    expect(screen.queryByRole('button', { name: '重命名 Alpha' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除 Alpha' })).not.toBeInTheDocument();
   });
 });

@@ -6,6 +6,7 @@ import { BookmarkDialog, type BookmarkDialogValue } from '../features/bookmarks/
 import { BookmarkGrid } from '../features/bookmarks/BookmarkGrid';
 import { BookmarkSortDrawer } from '../features/bookmarks/BookmarkSortDrawer';
 import { GroupTabs } from '../features/bookmarks/GroupTabs';
+import { GroupManager } from '../features/bookmarks/GroupManager';
 import { addBookmark, addGroup, deleteBookmark, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, reorderGroups } from '../features/bookmarks/bookmarkActions';
 import { SearchBox } from '../features/search/SearchBox';
 import { SettingsPanel, type ImportMode } from '../features/settings/SettingsPanel';
@@ -32,7 +33,7 @@ export type AppServices = {
   createId?: () => string;
 };
 
-type Drawer = 'theme' | 'settings' | 'sort' | null;
+type Drawer = 'theme' | 'settings' | 'sort' | 'groups' | null;
 const focusableSelector = 'input:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
@@ -58,6 +59,7 @@ export function App({ services }: { services: AppServices }) {
   const themeButtonRef = useRef<HTMLButtonElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
+  const groupsButtonRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -216,26 +218,6 @@ export function App({ services }: { services: AppServices }) {
     }
   };
 
-  const addNewGroup = () => {
-    const name = window.prompt('分组名称');
-    if (!name?.trim()) return;
-    void persist(addGroup(snapshot, { id: createId(), name: name.trim() }, now()));
-  };
-
-  const renameGroup = (id: string) => {
-    const group = snapshot.groups.find((item) => item.id === id);
-    const name = window.prompt('新的分组名称', group?.name ?? '');
-    if (name?.trim()) void persist(editGroup(snapshot, id, name.trim(), now()));
-  };
-  const removeGroup = (id: string) => {
-    const others = snapshot.groups.filter((group) => !group.deletedAt && group.id !== id);
-    if (others.length === 0) { window.alert('至少需要保留一个分组'); return; }
-    const choice = window.prompt('删除分组：输入 move 将书签移动到其他分组（默认），输入 delete 一并删除书签，输入 cancel 取消', 'move')?.trim().toLowerCase();
-    if (!choice || choice === 'cancel') return;
-    if (choice === 'delete') void persist(deleteGroupAndBookmarks(snapshot, id, now()));
-    else if (choice === 'move') void persist(deleteGroup(snapshot, id, others[0]!.id, now()));
-  };
-
   const syncFact = syncState.kind === 'synced'
     ? { label: 'Microsoft 已同步', symbol: '✓', detail: '已同步', success: true }
     : syncState.kind === 'warning'
@@ -278,9 +260,8 @@ export function App({ services }: { services: AppServices }) {
             <button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button>
           </div>
           <div className="group-rail">
-            <GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} onRename={renameGroup} onDelete={removeGroup}
-              onReorder={(activeId, overId) => void persist(reorderGroups(snapshot, activeId, overId, now()))} />
-            <button type="button" aria-label="添加分组" onClick={addNewGroup}>＋</button>
+            <GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} />
+            <button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button>
           </div>
         </section>
 
@@ -297,22 +278,30 @@ export function App({ services }: { services: AppServices }) {
       <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
 
       {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
-        <aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : drawer === 'sort' ? '书签排序' : '应用设置'} onKeyDown={handleDrawerKeyDown}>
-          <header><h2>{drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : '设置'}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
+        <aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : drawer === 'sort' ? '书签排序' : drawer === 'groups' ? '分组管理' : '应用设置'} onKeyDown={handleDrawerKeyDown}>
+          <header><h2>{drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : drawer === 'groups' ? '分组管理' : '设置'}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : drawer === 'groups' ? '分组管理' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
           {drawer === 'theme' ? <ThemePicker
             selectedThemeId={snapshot.settings.themeId}
             useCustomBackground={snapshot.settings.useCustomBackground}
+            appearance={snapshot.settings.appearance}
+            overlay={snapshot.settings.overlay}
+            blur={snapshot.settings.blur}
             backgroundStore={services.backgrounds}
-            onThemeChange={(themeId) => updateSettings({ themeId, useCustomBackground: false })}
+            onThemeChange={(themeId, recommended) => updateSettings({ themeId, useCustomBackground: false, ...recommended })}
+            onAppearanceChange={(changes) => updateSettings(changes)}
             onCustomBackgroundChange={(enabled) => {
               updateSettings({ useCustomBackground: enabled });
               if (enabled) void services.backgrounds.get().then((background) => { setCustomBackground(background); setBackgroundFallback(!background); });
             }}
-          /> : drawer === 'sort' ? <BookmarkSortDrawer snapshot={snapshot} groupId={activeGroup} onChange={(next) => void persist(next)} now={now} /> : <SettingsPanel
+          /> : drawer === 'sort' ? <BookmarkSortDrawer snapshot={snapshot} groupId={activeGroup} onChange={(next) => void persist(next)} now={now} /> : drawer === 'groups' ? <GroupManager snapshot={snapshot}
+            onCreate={(name) => void persist(addGroup(snapshot, { id: createId(), name }, now()))}
+            onRename={(id, name) => void persist(editGroup(snapshot, id, name, now()))}
+            onReorder={(activeId, overId) => void persist(reorderGroups(snapshot, activeId, overId, now()))}
+            onDelete={(id, mode, destinationId) => { if (mode === 'delete') void persist(deleteGroupAndBookmarks(snapshot, id, now())); else if (destinationId) void persist(deleteGroup(snapshot, id, destinationId, now())); }}
+          /> : <SettingsPanel
             snapshot={snapshot}
             syncState={syncState}
             onSearchTemplateChange={(searchTemplate) => updateSettings({ searchTemplate })}
-            onThemeParametersChange={(parameters) => updateSettings(parameters)}
             onImport={importData}
             onExport={() => services.download(exportSnapshot(snapshot), `day-start-${new Date(now()).toISOString().slice(0, 10)}.json`)}
             onReset={() => void reset()}
