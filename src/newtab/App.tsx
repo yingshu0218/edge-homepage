@@ -4,6 +4,7 @@ import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot, Bookmark } from '../domain/models';
 import { BookmarkDialog, type BookmarkDialogValue } from '../features/bookmarks/BookmarkDialog';
 import { BookmarkGrid } from '../features/bookmarks/BookmarkGrid';
+import { BookmarkSortDrawer } from '../features/bookmarks/BookmarkSortDrawer';
 import { GroupTabs } from '../features/bookmarks/GroupTabs';
 import { addBookmark, addGroup, deleteBookmark, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, reorderGroups } from '../features/bookmarks/bookmarkActions';
 import { SearchBox } from '../features/search/SearchBox';
@@ -31,7 +32,7 @@ export type AppServices = {
   createId?: () => string;
 };
 
-type Drawer = 'theme' | 'settings' | null;
+type Drawer = 'theme' | 'settings' | 'sort' | null;
 const focusableSelector = 'input:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
@@ -56,6 +57,7 @@ export function App({ services }: { services: AppServices }) {
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const themeButtonRef = useRef<HTMLButtonElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
@@ -264,16 +266,14 @@ export function App({ services }: { services: AppServices }) {
 
           <div className="section-heading">
             <strong>置顶</strong>
-            <div><span>拖拽排序</span><button ref={addButtonRef} type="button" aria-label="添加书签" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>＋ 添加</button></div>
+            <div><button ref={sortButtonRef} type="button" className="sort-manager-button" onClick={() => openDrawer('sort', sortButtonRef.current)}>管理排序</button><button ref={addButtonRef} type="button" aria-label="添加书签" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>＋ 添加</button></div>
           </div>
           <div className="bookmark-collection">
             <BookmarkGrid
               snapshot={snapshot}
               groupId={activeGroup}
-              onChange={(next) => void persist(next)}
               onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }}
               onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }}
-              now={now}
             />
             <button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button>
           </div>
@@ -297,8 +297,8 @@ export function App({ services }: { services: AppServices }) {
       <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
 
       {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
-        <aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : '应用设置'} onKeyDown={handleDrawerKeyDown}>
-          <header><h2>{drawer === 'theme' ? '主题' : '设置'}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
+        <aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : drawer === 'sort' ? '书签排序' : '应用设置'} onKeyDown={handleDrawerKeyDown}>
+          <header><h2>{drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : '设置'}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
           {drawer === 'theme' ? <ThemePicker
             selectedThemeId={snapshot.settings.themeId}
             useCustomBackground={snapshot.settings.useCustomBackground}
@@ -308,7 +308,7 @@ export function App({ services }: { services: AppServices }) {
               updateSettings({ useCustomBackground: enabled });
               if (enabled) void services.backgrounds.get().then((background) => { setCustomBackground(background); setBackgroundFallback(!background); });
             }}
-          /> : <SettingsPanel
+          /> : drawer === 'sort' ? <BookmarkSortDrawer snapshot={snapshot} groupId={activeGroup} onChange={(next) => void persist(next)} now={now} /> : <SettingsPanel
             snapshot={snapshot}
             syncState={syncState}
             onSearchTemplateChange={(searchTemplate) => updateSettings({ searchTemplate })}

@@ -176,6 +176,24 @@ describe('new tab application', () => {
     })));
   });
 
+  it('opens sorting in a side drawer and restores focus on close', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+
+    const trigger = screen.getByRole('button', { name: '管理排序' });
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: '书签排序' });
+    expect(dialog).toHaveTextContent('当前分组');
+    expect(dialog).toHaveTextContent('开发');
+    expect(screen.getByRole('button', { name: '排序 GitHub' })).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'GitHub' })).not.toHaveAttribute('aria-roledescription');
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '书签排序' })).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it('closes drawers with Escape, restores focus, and atomically leaves a custom background', async () => {
     const snapshot = createDefaultSnapshot();
     snapshot.settings.useCustomBackground = true;
