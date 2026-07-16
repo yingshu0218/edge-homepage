@@ -91,3 +91,42 @@ git diff --check
 
 - Native Edge unpacked-extension QA is still recommended for Microsoft-account cross-device propagation and real `chrome.storage.sync.getBytesInUse` reporting, because jsdom/fake storage cannot reproduce Edge account policy or network timing.
 - The self-use first release intentionally uses simple prompts for group rename/delete choices; the behavior is explicit and accessible, but a custom in-page dialog could improve visual polish later without changing the data model.
+
+## v2 final-review follow-up
+
+Implementation commit: `293e803c0d54966ccac674fe22fd5dde50e5b77a`
+
+### 1. Valid and convergent snapshot merges
+
+- Reproduced two legal devices independently adding a bookmark at the same tail order and independently adding/moving into groups with the same group order. The former merged into duplicate bookmark order; the latter into duplicate group order.
+- `mergeRecords` now resolves equal-revision/equal-tombstone conflicts with a deterministic canonical-record tie break and emits records in ID order, so merge direction cannot choose a different equal-revision value.
+- After record LWW, active groups and each active bookmark group are normalized by `(order, id)`. Only records whose numeric order actually changes receive a deterministic logical revision of `max(updatedAt) + 1`; unchanged records keep their timestamp. This makes the normalized record beat the stale conflicting record without creating a timestamp on every merge.
+- Active bookmarks orphaned by a concurrent group deletion are deterministically tombstoned. `mergeSnapshots` calls the shared runtime validator before returning.
+- Tests prove both concurrent scenarios validate, forward/reverse results match, repeated bidirectional merge is identical, and a merged snapshot survives `SnapshotRepository.save()` plus reload.
+
+### 2. Transactional search-template editing and defensive saves
+
+- Reproduced `SettingsPanel` persisting every keystroke, including an empty template.
+- Search input is now a draft. Change events never persist. Blur or Enter validates that `%s` exists and that substituting it produces an HTTP(S) URL; invalid input stays in the field with an inline error and never invokes the persistence callback.
+- `SnapshotRepository.save()` now validates before calling storage, so an invalid snapshot rejects without overwriting the last valid snapshot.
+- Tests cover character-by-character clearing, missing `%s`, unsafe URL schemes, valid blur commit, App-level coordinator persistence only for the valid committed value, and valid-old-snapshot reload after a rejected save.
+- Import preview semantics were tightened from a nested pseudo-modal `role=dialog` to a labeled `role=region`.
+
+### v2 RED/GREEN evidence
+
+RED command:
+
+`npm test -- src/sync/edgeSyncProvider.test.ts src/storage/snapshotRepository.test.ts src/features/settings/SettingsPanel.test.tsx`
+
+Observed 4 expected failures: concurrent bookmark order failed validation, concurrent group order failed validation, invalid repository save resolved, and an empty search keystroke invoked persistence.
+
+GREEN focused result: 3 files, 29 tests passed. Final App persistence coverage raised the full count to 92.
+
+Fresh final verification before commit:
+
+```text
+npm test                         15 files, 92 tests passed
+npm run build                    passed (TypeScript + Vite, 54 modules)
+node manifest/package validator  passed
+git diff --check                 passed
+```
