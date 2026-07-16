@@ -4,6 +4,7 @@ import type { AppSnapshot } from '../../domain/models';
 import type { SyncState } from '../../sync/types';
 import { SyncStatus } from '../../sync/SyncStatus';
 import { parseSnapshot } from '../../storage/transfer';
+import { findSearchEngine, SEARCH_ENGINES } from '../search/searchEngines';
 
 export type ImportMode = 'replace' | 'merge';
 
@@ -32,6 +33,7 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
   const [mode, setMode] = useState<ImportMode>('replace');
   const [parameters, setParameters] = useState({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
   const [searchDraft, setSearchDraft] = useState(snapshot.settings.searchTemplate);
+  const [selectedEngineId, setSelectedEngineId] = useState(findSearchEngine(snapshot.settings.searchTemplate)?.id ?? 'custom');
   const [searchError, setSearchError] = useState<string>();
   const [error, setError] = useState<string>();
   const [pendingImport, setPendingImport] = useState<{ text: string; mode: ImportMode; groups: number; bookmarks: number }>();
@@ -39,7 +41,11 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
   useEffect(() => {
     setParameters({ overlay: snapshot.settings.overlay, blur: snapshot.settings.blur });
   }, [snapshot.settings.overlay, snapshot.settings.blur]);
-  useEffect(() => { setSearchDraft(snapshot.settings.searchTemplate); setSearchError(undefined); }, [snapshot.settings.searchTemplate]);
+  useEffect(() => {
+    setSearchDraft(snapshot.settings.searchTemplate);
+    setSelectedEngineId(findSearchEngine(snapshot.settings.searchTemplate)?.id ?? 'custom');
+    setSearchError(undefined);
+  }, [snapshot.settings.searchTemplate]);
 
   const changeParameter = (name: 'overlay' | 'blur', value: number) => {
     const next = { ...parameters, [name]: value };
@@ -78,9 +84,24 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onT
     <section aria-label="设置">
       <h2>设置</h2>
       <label>搜索引擎
+        <select value={selectedEngineId} onChange={(event) => {
+          const id = event.target.value;
+          setSelectedEngineId(id);
+          setSearchError(undefined);
+          const engine = SEARCH_ENGINES.find((candidate) => candidate.id === id);
+          if (engine) {
+            setSearchDraft(engine.template);
+            onSearchTemplateChange(engine.template);
+          }
+        }}>
+          {SEARCH_ENGINES.map((engine) => <option key={engine.id} value={engine.id}>{engine.name}</option>)}
+          <option value="custom">自定义</option>
+        </select>
+      </label>
+      {selectedEngineId === 'custom' && <label>自定义搜索地址
         <input value={searchDraft} aria-invalid={searchError ? 'true' : undefined} aria-describedby={searchError ? `${importId}-search-error` : undefined}
           onChange={(event) => { setSearchDraft(event.target.value); setSearchError(undefined); }} onBlur={commitSearchTemplate} onKeyDown={searchKeyDown} />
-      </label>
+      </label>}
       {searchError && <p id={`${importId}-search-error`} role="alert">{searchError}</p>}
       <label>遮罩强度
         <input type="range" min="0" max="1" step="0.05" value={parameters.overlay} onChange={(event) => changeParameter('overlay', Number(event.target.value))} />

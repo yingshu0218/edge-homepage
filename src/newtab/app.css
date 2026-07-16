@@ -37,6 +37,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .bookmark-collection { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .bookmark-collection > [aria-label="Bookmarks"] { display: contents; }
 [data-bookmark-id] { position: relative; min-height: 112px; padding: 15px; border: 1px solid rgba(255,255,255,.15); border-radius: 15px; background: rgba(255,255,255,.085); backdrop-filter: blur(18px); transition: transform .18s ease, background .18s ease; }
+[data-bookmark-id].sortable-bookmark { cursor: grab; touch-action: none; }
+[data-bookmark-id].sortable-bookmark.is-dragging { z-index: 2; cursor: grabbing; box-shadow: 0 18px 44px rgba(0,0,0,.28); }
 [data-bookmark-id]:hover { transform: translateY(-2px); background: rgba(255,255,255,.14); }
 [data-bookmark-id] a { display: flex; height: 100%; flex-direction: column; color: inherit; text-decoration: none; }
 [data-bookmark-id] a::before { content: attr(href); display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 13px; overflow: hidden; border-radius: 9px; background: rgba(255,255,255,.14); color: transparent; }
@@ -45,7 +47,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-bookmark-id] button { position: absolute; top: 8px; opacity: 0; border: 0; background: transparent; color: rgba(255,255,255,.62); font-size: 0; cursor: pointer; }
 [data-bookmark-id]:hover button, [data-bookmark-id]:focus-within button { opacity: 1; }
 [data-bookmark-id] button::before { font-size: 14px; }
-[data-bookmark-id] button[aria-label^="Drag"] { right: 46px; } [data-bookmark-id] button[aria-label^="Drag"]::before { content: "⠿"; }
 [data-bookmark-id] button[aria-label^="Edit"] { right: 27px; } [data-bookmark-id] button[aria-label^="Edit"]::before { content: "✎"; }
 [data-bookmark-id] button[aria-label^="Delete"] { right: 8px; } [data-bookmark-id] button[aria-label^="Delete"]::before { content: "×"; }
 .new-bookmark-card { min-height: 112px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 15px; border: 1px dashed rgba(255,255,255,.3); border-radius: 15px; background: rgba(255,255,255,.035); color: rgba(255,255,255,.68); text-align: left; cursor: pointer; }

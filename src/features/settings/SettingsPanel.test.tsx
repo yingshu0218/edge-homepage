@@ -8,7 +8,7 @@ import { exportSnapshot } from '../../storage/transfer';
 afterEach(cleanup);
 
 describe('SettingsPanel', () => {
-  it('updates search and theme preferences', () => {
+  it('uses Google by default and saves a selected preset immediately', () => {
     const onSearchTemplateChange = vi.fn();
     const onThemeParametersChange = vi.fn();
     render(
@@ -23,8 +23,16 @@ describe('SettingsPanel', () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText('搜索引擎'), { target: { value: 'https://www.bing.com/search?q=%s' } });
-    fireEvent.blur(screen.getByLabelText('搜索引擎'));
+    expect(screen.getByRole('combobox', { name: '搜索引擎' })).toHaveValue('google');
+    expect(screen.getByRole('option', { name: 'Google' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Bing' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '百度' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'DuckDuckGo' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Brave' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '搜狗' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '360 搜索' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '自定义' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '搜索引擎' }), { target: { value: 'bing' } });
     fireEvent.change(screen.getByLabelText('遮罩强度'), { target: { value: '0.5' } });
     fireEvent.change(screen.getByLabelText('模糊强度'), { target: { value: '8' } });
 
@@ -32,12 +40,15 @@ describe('SettingsPanel', () => {
     expect(onThemeParametersChange).toHaveBeenCalledWith({ overlay: 0.5, blur: 8 });
   });
 
-  it('keeps search edits as a draft and rejects incomplete or unsafe templates', () => {
+  it('selects custom for an unknown template and rejects incomplete or unsafe drafts', () => {
     const onSearchTemplateChange = vi.fn();
-    render(<SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={onSearchTemplateChange} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
-    const input = screen.getByLabelText('搜索引擎');
+    const snapshot = createDefaultSnapshot();
+    snapshot.settings.searchTemplate = 'https://private.example/?q=%s';
+    render(<SettingsPanel snapshot={snapshot} syncState={{ kind: 'local' }} onSearchTemplateChange={onSearchTemplateChange} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
+    expect(screen.getByRole('combobox', { name: '搜索引擎' })).toHaveValue('custom');
+    const input = screen.getByLabelText('自定义搜索地址');
 
-    const original = createDefaultSnapshot().settings.searchTemplate;
+    const original = snapshot.settings.searchTemplate;
     for (let length = original.length - 1; length >= 0; length -= 1) {
       fireEvent.change(input, { target: { value: original.slice(0, length) } });
       expect(onSearchTemplateChange).not.toHaveBeenCalled();
@@ -51,6 +62,13 @@ describe('SettingsPanel', () => {
     fireEvent.blur(input);
     expect(screen.getByRole('alert')).toHaveTextContent('HTTP');
     expect(onSearchTemplateChange).not.toHaveBeenCalled();
+  });
+
+  it('reveals a custom template field only after choosing custom', () => {
+    render(<SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
+    expect(screen.queryByLabelText('自定义搜索地址')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '搜索引擎' }), { target: { value: 'custom' } });
+    expect(screen.getByLabelText('自定义搜索地址')).toHaveValue('https://www.google.com/search?q=%s');
   });
 
   it('tracks imported preference props without writing a stale sibling value', () => {

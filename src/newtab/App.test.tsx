@@ -164,7 +164,8 @@ describe('new tab application', () => {
     render(<App services={services} />);
     await screen.findByText('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
-    const input = screen.getByLabelText('搜索引擎');
+    fireEvent.change(screen.getByRole('combobox', { name: '搜索引擎' }), { target: { value: 'custom' } });
+    const input = screen.getByLabelText('自定义搜索地址');
     fireEvent.change(input, { target: { value: 'https://bing.com/search?q=query' } });
     fireEvent.blur(input);
     expect(services.coordinator.saveAndSync).not.toHaveBeenCalled();
