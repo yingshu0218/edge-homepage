@@ -15,4 +15,7 @@ export const chromeLocalStorage: ChromeStorageArea = {
   set(items) {
     return chromeApi.storage.local.set(items);
   },
+  remove(keys) {
+    return chromeApi.storage.local.remove(keys);
+  },
 };
