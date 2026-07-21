@@ -12,6 +12,21 @@ describe('snapshot transfer', () => {
     expect(parseSnapshot(text)).toEqual(snapshot);
   });
 
+  it('migrates a schema-1 backup to schema 2', () => {
+    const v1 = createDefaultSnapshot() as unknown as Record<string, unknown>;
+    v1.schemaVersion = 1;
+    const settings = { ...(v1.settings as Record<string, unknown>) };
+    delete settings.bookmarkDisplayLimit;
+    delete settings.clockHour12;
+    delete settings.clockShowSeconds;
+    delete settings.clockShowFullDate;
+    delete settings.temperatureUnit;
+    delete settings.weatherLocation;
+    v1.settings = settings;
+
+    expect(parseSnapshot(JSON.stringify(v1)).schemaVersion).toBe(2);
+  });
+
   it('rejects unknown schemas before writing', () => {
     expect(() => parseSnapshot('{"schemaVersion":99}')).toThrow('Unsupported backup schema');
   });

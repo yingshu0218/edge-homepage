@@ -5,7 +5,7 @@ const DEVELOPMENT_GROUP_ID = 'development';
 
 export function createDefaultSnapshot(): AppSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     groups: [
       {
         id: DEVELOPMENT_GROUP_ID,
@@ -59,6 +59,11 @@ export function createDefaultSnapshot(): AppSnapshot {
       overlay: 0.38,
       blur: 0,
       useCustomBackground: false,
+      bookmarkDisplayLimit: 8,
+      clockHour12: false,
+      clockShowSeconds: false,
+      clockShowFullDate: true,
+      temperatureUnit: 'celsius',
       updatedAt: INITIAL_TIMESTAMP,
     },
   };

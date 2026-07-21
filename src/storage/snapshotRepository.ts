@@ -1,6 +1,6 @@
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot } from '../domain/models';
-import { validateSnapshot } from '../domain/snapshotValidator';
+import { migrateSnapshot, validateSnapshot } from '../domain/snapshotValidator';
 import type { ChromeStorageArea, SnapshotStorage } from './types';
 
 const SNAPSHOT_KEY = 'app:snapshot';
@@ -14,10 +14,7 @@ export class SnapshotRepository implements SnapshotStorage {
       return createDefaultSnapshot();
     }
 
-    const schemaVersion = (stored as { schemaVersion?: unknown }).schemaVersion;
-    if (schemaVersion !== 1) throw new Error(`Unsupported snapshot schema version: ${String(schemaVersion)}`);
-
-    return validateSnapshot(stored, 'local snapshot');
+    return migrateSnapshot(stored, 'local snapshot');
   }
 
   async save(snapshot: AppSnapshot): Promise<void> {

@@ -45,12 +45,39 @@ describe('SnapshotRepository', () => {
     expect((await repository.load()).groups[0].name).toBe('工作');
   });
 
-  it('rejects snapshots with an unsupported schema version', async () => {
+  it('migrates an existing schema-1 local snapshot', async () => {
     const storage = fakeChromeStorage();
-    await storage.set({ 'app:snapshot': { ...createDefaultSnapshot(), schemaVersion: 2 } });
+    const snapshot = createDefaultSnapshot() as unknown as Record<string, unknown>;
+    snapshot.schemaVersion = 1;
+    const settings = { ...(snapshot.settings as Record<string, unknown>) };
+    delete settings.bookmarkDisplayLimit;
+    delete settings.clockHour12;
+    delete settings.clockShowSeconds;
+    delete settings.clockShowFullDate;
+    delete settings.temperatureUnit;
+    delete settings.weatherLocation;
+    snapshot.settings = settings;
+    await storage.set({ 'app:snapshot': snapshot });
     const repository = new SnapshotRepository(storage);
 
-    await expect(repository.load()).rejects.toThrow('Unsupported snapshot schema version: 2');
+    await expect(repository.load()).resolves.toMatchObject({
+      schemaVersion: 2,
+      settings: {
+        bookmarkDisplayLimit: 8,
+        clockHour12: false,
+        clockShowSeconds: false,
+        clockShowFullDate: true,
+        temperatureUnit: 'celsius',
+      },
+    });
+  });
+
+  it('rejects snapshots with an unsupported schema version', async () => {
+    const storage = fakeChromeStorage();
+    await storage.set({ 'app:snapshot': { ...createDefaultSnapshot(), schemaVersion: 99 } });
+    const repository = new SnapshotRepository(storage);
+
+    await expect(repository.load()).rejects.toThrow('unsupported schema 99');
   });
 
   it('fails closed when a supported snapshot contains unsafe nested data', async () => {
