@@ -123,17 +123,21 @@ describe('EdgeSyncProvider', () => {
   it('pulls chunked records into a snapshot', async () => {
     const snapshot = createDefaultSnapshot();
     const sync = fakeSync({
-      meta: { schemaVersion: 1 }, settings: snapshot.settings,
+      meta: { schemaVersion: 2 }, settings: snapshot.settings,
       'group:development': snapshot.groups[0], 'bookmark:github': snapshot.bookmarks[0],
     });
     const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
-    await expect(provider.pull()).resolves.toMatchObject({ bookmarks: [{ id: 'github' }], groups: [{ id: 'development' }] });
+    await expect(provider.pull()).resolves.toMatchObject({
+      schemaVersion: 2,
+      bookmarks: [{ id: 'github' }],
+      groups: [{ id: 'development' }],
+    });
   });
 
   it('rejects one corrupted chunk instead of returning a partial snapshot', async () => {
     const snapshot = createDefaultSnapshot();
     const sync = fakeSync({
-      meta: { schemaVersion: 1 }, settings: snapshot.settings,
+      meta: { schemaVersion: 2 }, settings: snapshot.settings,
       'group:development': snapshot.groups[0],
       'bookmark:github': { ...snapshot.bookmarks[0], url: 'javascript:alert(1)' },
     });
@@ -173,7 +177,7 @@ describe('EdgeSyncProvider', () => {
   it('notifies subscribers only after a replacement push has removed obsolete records', async () => {
     const old = createDefaultSnapshot();
     old.bookmarks.push({ ...old.bookmarks[0]!, id: 'obsolete', title: 'Obsolete', order: 4 });
-    const initial: Record<string, unknown> = { meta: { schemaVersion: 1 }, settings: old.settings };
+    const initial: Record<string, unknown> = { meta: { schemaVersion: 2 }, settings: old.settings };
     old.groups.forEach((group) => { initial[`group:${group.id}`] = group; });
     old.bookmarks.forEach((bookmark) => { initial[`bookmark:${bookmark.id}`] = bookmark; });
     const sync = fakeSync(initial, true);

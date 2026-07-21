@@ -129,11 +129,11 @@ export class EdgeSyncProvider implements SyncProvider {
     const meta = data.meta as { schemaVersion?: number } | undefined;
     const settings = data.settings as AppSnapshot['settings'] | undefined;
     if (!meta && !settings && !Object.keys(data).some(isManagedKey)) return null;
-    if (meta?.schemaVersion !== 1 || !settings || typeof meta !== 'object' || meta === null || Object.keys(meta).length !== 1) {
+    if (meta?.schemaVersion !== 2 || !settings || typeof meta !== 'object' || meta === null || Object.keys(meta).length !== 1) {
       throw new SnapshotCorruptionError('Edge sync data', 'metadata or settings is missing or invalid');
     }
     const snapshot = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       settings,
       groups: Object.entries(data).filter(([key]) => key.startsWith('group:')).map(([, value]) => value as BookmarkGroup),
       bookmarks: Object.entries(data).filter(([key]) => key.startsWith('bookmark:')).map(([, value]) => value as Bookmark),
@@ -203,7 +203,7 @@ export function mergeSnapshots(local: AppSnapshot, remote: AppSnapshot, now = Da
     || (remote.settings.updatedAt === local.settings.updatedAt && stableRecord(remote.settings) > stableRecord(local.settings))
     ? remote.settings : local.settings;
   const merged = normalizeMergedSnapshot({
-    schemaVersion: 1,
+    schemaVersion: 2,
     bookmarks: mergeRecords(local.bookmarks, remote.bookmarks, now),
     groups: mergeRecords(local.groups, remote.groups, now),
     settings,
