@@ -21,6 +21,63 @@ export function filterBookmarksByGroup(snapshot: AppSnapshot, groupId: string): 
     .sort((left, right) => left.order - right.order);
 }
 
+export function searchBookmarks(snapshot: AppSnapshot, groupId: string, query: string): Bookmark[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return filterBookmarksByGroup(snapshot, groupId).filter(({ title, url }) => (
+    title.toLocaleLowerCase().includes(normalizedQuery) || url.toLocaleLowerCase().includes(normalizedQuery)
+  ));
+}
+
+function normalizeBookmarkGroups(bookmarks: Bookmark[], groupIds: Iterable<string>, now: number): Bookmark[] {
+  let normalized = bookmarks;
+  for (const groupId of new Set(groupIds)) {
+    const orderedIds = normalized
+      .filter((bookmark) => bookmark.groupId === groupId && bookmark.deletedAt === undefined)
+      .sort((left, right) => left.order - right.order)
+      .map(({ id }) => id);
+    normalized = withGroupOrder(normalized, groupId, orderedIds, now);
+  }
+  return normalized;
+}
+
+export function moveBookmarks(snapshot: AppSnapshot, ids: string[], destinationGroupId: string, now = Date.now()): AppSnapshot {
+  const destinationGroup = snapshot.groups.find(({ id, deletedAt }) => id === destinationGroupId && deletedAt === undefined);
+  if (!destinationGroup) throw new RangeError('An active destination group is required.');
+
+  const selectedIds = new Set(ids);
+  const selected = snapshot.groups
+    .filter(({ deletedAt }) => deletedAt === undefined)
+    .sort((left, right) => left.order - right.order)
+    .flatMap(({ id }) => filterBookmarksByGroup(snapshot, id))
+    .filter((bookmark) => selectedIds.has(bookmark.id) && bookmark.groupId !== destinationGroupId);
+  const sourceGroupIds = selected.map(({ groupId }) => groupId);
+  const movedIds = new Set(selected.map(({ id }) => id));
+  const destinationIds = filterBookmarksByGroup(snapshot, destinationGroupId).map(({ id }) => id);
+  const moved = snapshot.bookmarks.map((bookmark) => movedIds.has(bookmark.id)
+    ? { ...bookmark, groupId: destinationGroupId, updatedAt: now }
+    : bookmark);
+  const normalizedSources = normalizeBookmarkGroups(moved, sourceGroupIds, now);
+
+  return {
+    ...snapshot,
+    bookmarks: withGroupOrder(normalizedSources, destinationGroupId, [...destinationIds, ...selected.map(({ id }) => id)], now),
+  };
+}
+
+export function deleteBookmarks(snapshot: AppSnapshot, ids: string[], now = Date.now()): AppSnapshot {
+  const selectedIds = new Set(ids);
+  const selected = snapshot.bookmarks.filter(({ id, deletedAt }) => selectedIds.has(id) && deletedAt === undefined);
+  const deletedIds = new Set(selected.map(({ id }) => id));
+  const deleted = snapshot.bookmarks.map((bookmark) => deletedIds.has(bookmark.id)
+    ? { ...bookmark, deletedAt: now, updatedAt: now }
+    : bookmark);
+
+  return {
+    ...snapshot,
+    bookmarks: normalizeBookmarkGroups(deleted, selected.map(({ groupId }) => groupId), now),
+  };
+}
+
 export function addBookmark(snapshot: AppSnapshot, input: NewBookmark): AppSnapshot {
   const { now = Date.now(), ...bookmark } = input;
   const existingIds = filterBookmarksByGroup(snapshot, bookmark.groupId).map(({ id }) => id);

@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   addBookmark,
   deleteBookmark,
+  deleteBookmarks,
   deleteGroup,
   editBookmark,
   filterBookmarksByGroup,
+  moveBookmarks,
   reorderBookmarks,
+  searchBookmarks,
 } from './bookmarkActions';
 
 describe('bookmark actions', () => {
@@ -141,6 +144,53 @@ describe('bookmark actions', () => {
 
     expect(filterBookmarksByGroup(next, 'other').map(({ id, order }) => [id, order])).toEqual([
       ['news', 0], ['mdn', 1], ['stackoverflow', 2], ['npm', 3], ['github', 4],
+    ]);
+  });
+
+  it('searches active bookmark titles and URLs case-insensitively after trimming the query', () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.bookmarks[1]!.deletedAt = 1;
+
+    expect(searchBookmarks(snapshot, 'development', ' GITHUB ').map(({ id }) => id)).toEqual(['github']);
+    expect(searchBookmarks(snapshot, 'development', 'NPMJS.COM').map(({ id }) => id)).toEqual(['npm']);
+  });
+
+  it('moves deduplicated active bookmarks in source display order and normalizes affected groups', () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.groups.push({ id: 'personal', name: 'Personal', order: 1, updatedAt: 0 });
+    snapshot.bookmarks.push({ id: 'news', title: 'News', url: 'https://news.test/', groupId: 'personal', order: 5, createdAt: 0, updatedAt: 0 });
+    snapshot.bookmarks[2]!.order = 8;
+
+    const moved = moveBookmarks(snapshot, ['mdn', 'github', 'mdn'], 'personal', 100);
+
+    expect(filterBookmarksByGroup(moved, 'personal').map(({ id, order }) => [id, order])).toEqual([
+      ['news', 0], ['github', 1], ['mdn', 2],
+    ]);
+    expect(filterBookmarksByGroup(moved, 'development').map(({ id, order }) => [id, order])).toEqual([
+      ['npm', 0], ['stackoverflow', 1],
+    ]);
+    expect(moved.bookmarks.find(({ id }) => id === 'github')).toMatchObject({ groupId: 'personal', updatedAt: 100 });
+  });
+
+  it('rejects a missing or soft-deleted batch move destination without changing the snapshot', () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.groups.push({ id: 'deleted', name: 'Deleted', order: 1, updatedAt: 0, deletedAt: 1 });
+    const before = structuredClone(snapshot);
+
+    expect(() => moveBookmarks(snapshot, ['github'], 'missing', 100)).toThrow(RangeError);
+    expect(() => moveBookmarks(snapshot, ['github'], 'deleted', 100)).toThrow(RangeError);
+    expect(snapshot).toEqual(before);
+  });
+
+  it('soft deletes each selected active bookmark once and normalizes source order', () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.bookmarks[3]!.order = 9;
+
+    const deleted = deleteBookmarks(snapshot, ['github', 'mdn', 'github'], 100);
+
+    expect(deleted.bookmarks.filter(({ id }) => ['github', 'mdn'].includes(id)).every(({ deletedAt, updatedAt }) => deletedAt === 100 && updatedAt === 100)).toBe(true);
+    expect(filterBookmarksByGroup(deleted, 'development').map(({ id, order }) => [id, order])).toEqual([
+      ['stackoverflow', 0], ['npm', 1],
     ]);
   });
 });
