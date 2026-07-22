@@ -105,7 +105,7 @@ function ForecastContent({
       <div className="weather-current">
         <div>
           <p className="weather-eyebrow">{locationDescription(forecast.location) || '天气实况'}</p>
-          <h3>{forecast.location.name}</h3>
+          <h3 className="weather-city-name">{forecast.location.name}</h3>
           <p className="weather-description"><span aria-hidden="true">{currentWeather.icon}</span> {currentWeather.label}</p>
         </div>
         <strong className="weather-temperature">{temperature(forecast.current.temperature, unit)}</strong>
@@ -232,6 +232,14 @@ export function WeatherDrawer({
     setSearchError(undefined);
   };
 
+  const changeQuery = (nextQuery: string) => {
+    setQuery(nextQuery);
+    setCandidates([]);
+    setSearchCompleted(false);
+    setSearchError(undefined);
+    setSearching(false);
+  };
+
   const requestCurrentLocation = () => {
     const adapter = geolocation ?? (typeof navigator === 'undefined' ? undefined : navigator.geolocation);
     setLocationError(undefined);
@@ -276,7 +284,13 @@ export function WeatherDrawer({
   return (
     <section className="weather-drawer-panel" aria-label="天气">
       <div className="weather-location-controls">
-        <label htmlFor={searchHelpId}>搜索城市</label>
+        <div className="weather-location-heading">
+          <label htmlFor={searchHelpId}>搜索城市</label>
+          <div className="weather-unit-toggle" role="group" aria-label="温度单位">
+            <button type="button" aria-label="摄氏度" aria-pressed={unit === 'celsius'} onClick={() => onUnitChange('celsius')}>℃</button>
+            <button type="button" aria-label="华氏度" aria-pressed={unit === 'fahrenheit'} onClick={() => onUnitChange('fahrenheit')}>℉</button>
+          </div>
+        </div>
         <input
           id={searchHelpId}
           type="search"
@@ -285,7 +299,7 @@ export function WeatherDrawer({
           placeholder="输入城市名称"
           aria-describedby={searchError ? `${searchHelpId}-error` : undefined}
           aria-invalid={searchError ? 'true' : undefined}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => changeQuery(event.target.value)}
         />
         {searching ? <p role="status">正在搜索城市…</p> : null}
         {searchError ? <p id={`${searchHelpId}-error`} role="alert">{searchError}</p> : null}
@@ -299,7 +313,7 @@ export function WeatherDrawer({
                   aria-label={`选择${candidate.name}，${locationDescription(candidate)}`}
                   onClick={() => chooseLocation(candidate)}
                 >
-                  <strong>{candidate.name}</strong>
+                  <strong className="weather-city-name">{candidate.name}</strong>
                   <span>{locationDescription(candidate)}</span>
                 </button>
               </li>
@@ -313,12 +327,7 @@ export function WeatherDrawer({
           </button>
           {locationError ? <p role="alert">{locationError}</p> : null}
         </div>
-        {currentLocation ? <p className="weather-selected-location">已选择：{currentLocation.name}</p> : null}
-      </div>
-
-      <div className="weather-unit-toggle" role="group" aria-label="温度单位">
-        <button type="button" aria-label="摄氏度" aria-pressed={unit === 'celsius'} onClick={() => onUnitChange('celsius')}>℃</button>
-        <button type="button" aria-label="华氏度" aria-pressed={unit === 'fahrenheit'} onClick={() => onUnitChange('fahrenheit')}>℉</button>
+        {currentLocation ? <p className="weather-selected-location weather-city-name">已选择：{currentLocation.name}</p> : null}
       </div>
 
       {state.kind === 'unconfigured' ? (

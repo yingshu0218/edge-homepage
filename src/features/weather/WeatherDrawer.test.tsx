@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TemperatureUnit, WeatherLocation } from '../../domain/models';
@@ -133,6 +133,55 @@ describe('WeatherDrawer city selection', () => {
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole('button', { name: /选择福州/ }));
     expect(onLocationChange).toHaveBeenCalledWith(fuzhou);
+  });
+
+  it('immediately removes old candidates when a different query is typed', async () => {
+    vi.useFakeTimers();
+    const search = vi.fn<WeatherClient['searchLocations']>()
+      .mockResolvedValueOnce([fuzhou])
+      .mockResolvedValueOnce([xiamen]);
+    renderDrawer({ searchLocations: search });
+
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: '福' } });
+    await act(async () => vi.advanceTimersByTime(300));
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole('button', { name: /选择福州/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: '厦' } });
+    expect(screen.queryByRole('button', { name: /选择福州/ })).not.toBeInTheDocument();
+  });
+
+  it('reserves flow layout for unit controls above the search input', () => {
+    renderDrawer();
+    const searchInput = screen.getByLabelText('搜索城市');
+    const controls = searchInput.closest('.weather-location-controls');
+    expect(controls).not.toBeNull();
+    const heading = controls!.querySelector('.weather-location-heading');
+    expect(heading).not.toBeNull();
+    expect(within(heading as HTMLElement).getByText('搜索城市')).toBeInTheDocument();
+    expect(within(heading as HTMLElement).getByRole('group', { name: '温度单位' })).toBeInTheDocument();
+    expect(heading?.nextElementSibling).toBe(searchInput);
+  });
+
+  it('marks long unbroken city names for constrained non-hourly rendering', async () => {
+    vi.useFakeTimers();
+    const forecast = makeForecast();
+    forecast.location = {
+      ...forecast.location,
+      name: 'ExtremelyLongUnbrokenCityNameThatMustNeverEscapeTheNarrowDrawer',
+    };
+    renderDrawer({
+      state: { kind: 'ready', forecast, refreshing: false, stale: false },
+      searchLocations: vi.fn().mockResolvedValue([forecast.location]),
+    });
+
+    const heading = screen.getByRole('heading', { name: forecast.location.name });
+    expect(heading).toHaveClass('weather-city-name');
+    expect(screen.getByText(`已选择：${forecast.location.name}`)).toHaveClass('weather-city-name');
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: 'Extremely' } });
+    await act(async () => vi.advanceTimersByTime(300));
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole('button', { name: /选择ExtremelyLongUnbrokenCityName/ }).querySelector('strong')).toHaveClass('weather-city-name');
   });
 });
 
