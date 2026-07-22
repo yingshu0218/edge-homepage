@@ -103,6 +103,50 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .group-manager form { display: flex; align-items: end; gap: 8px; margin-bottom: 20px; }.group-manager form label { flex: 1; margin: 0 !important; }.group-manager form button { min-height: 42px; border: 0; border-radius: 10px; padding: 0 13px; background: var(--theme-accent-color); color: #10201c; cursor: pointer; }
 .group-manager ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }.group-manager-row { display: flex; align-items: center; gap: 8px; min-height: 64px; padding: 9px; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; background: rgba(255,255,255,.06); }.group-manager-row.is-dragging { background: rgba(255,255,255,.14); }.group-manager-row > button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: rgba(255,255,255,.06); color: white; cursor: pointer; }.group-manager-row .group-drag-handle { cursor: grab; touch-action: none; }.group-manager-copy { min-width: 0; flex: 1; }.group-manager-copy strong,.group-manager-copy small { display: block; }.group-manager-copy small { margin-top: 3px; color: rgba(255,255,255,.45); font-size: 10px; }.group-manager-copy input { width: 100%; }
 .group-delete-confirm { display: grid; gap: 10px; margin-top: 18px; padding: 15px; border: 1px solid rgba(255,170,150,.25); border-radius: 12px; background: rgba(100,30,25,.14); }.group-delete-confirm p { margin: 0; color: rgba(255,255,255,.62); font-size: 11px; }.group-delete-confirm label { margin: 0 !important; }.group-delete-confirm button { min-height: 36px; border: 1px solid rgba(255,255,255,.14); border-radius: 9px; background: rgba(255,255,255,.07); color: white; cursor: pointer; }
+.weather-drawer-panel { position: relative; min-width: 0; }
+.weather-location-controls { min-width: 0; padding-bottom: 18px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.weather-location-controls > label { margin: 0 0 8px !important; }
+.weather-location-controls > p { margin: 8px 0 0; color: rgba(255,255,255,.58); font-size: 11px; line-height: 1.5; }
+.weather-location-controls > [role="alert"], .weather-geolocation-action [role="alert"], .weather-action-error [role="alert"] { color: #ffc0b7; }
+.weather-location-results { display: grid; gap: 7px; margin: 10px 0 0; padding: 0; list-style: none; }
+.weather-location-results button { width: 100%; min-width: 0; min-height: 50px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid rgba(255,255,255,.13); border-radius: 11px; padding: 9px 11px; background: rgba(255,255,255,.06); color: white; text-align: left; cursor: pointer; }
+.weather-location-results button:hover { background: rgba(255,255,255,.12); }
+.weather-location-results strong { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.weather-location-results span { max-width: 55%; flex: none; overflow: hidden; color: rgba(255,255,255,.48); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.weather-geolocation-action { margin-top: 10px; }
+.weather-geolocation-action > button, .weather-action-error button, .weather-refresh { min-height: 38px; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 0 12px; background: rgba(255,255,255,.08); color: white; cursor: pointer; }
+.weather-geolocation-action button:disabled, .weather-refresh:disabled { cursor: wait; opacity: .56; }
+.weather-geolocation-action p { margin: 8px 0 0; font-size: 11px; line-height: 1.5; }
+.weather-selected-location { color: var(--theme-accent-color) !important; }
+.weather-unit-toggle { position: absolute; top: 0; right: 0; display: flex; padding: 2px; border: 1px solid rgba(255,255,255,.13); border-radius: 10px; background: rgba(255,255,255,.05); }
+.weather-unit-toggle button { width: 34px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: rgba(255,255,255,.55); cursor: pointer; }
+.weather-unit-toggle button[aria-pressed="true"] { background: rgba(255,255,255,.13); color: white; box-shadow: none; }
+.weather-empty-state, .weather-state { min-height: 170px; display: grid; place-items: center; align-content: center; gap: 9px; margin: 0; color: rgba(255,255,255,.52); text-align: center; }
+.weather-empty-state > span { font-size: 34px; }.weather-empty-state p { margin: 0; font-size: 12px; }
+.weather-forecast { min-width: 0; padding-top: 21px; }
+.weather-current { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.weather-current p, .weather-current h3 { margin: 0; }
+.weather-current h3 { margin-top: 4px; font-size: 24px; }
+.weather-eyebrow { max-width: 190px; overflow: hidden; color: rgba(255,255,255,.48); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.weather-description { margin-top: 7px !important; color: rgba(255,255,255,.68); font-size: 12px; }
+.weather-description span { margin-right: 3px; }
+.weather-temperature { flex: none; font-size: 42px; font-weight: 300; letter-spacing: -.05em; }
+.weather-current-meta { display: flex; justify-content: space-between; gap: 14px; margin-top: 14px; color: rgba(255,255,255,.48); font-size: 10px; }
+.weather-inline-status { margin: 13px 0 0; color: #f0cf84; font-size: 11px; }
+.weather-action-error { min-height: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 13px 0 0; padding: 10px; border: 1px solid rgba(255,170,150,.24); border-radius: 10px; background: rgba(100,30,25,.14); text-align: left; }
+.weather-action-error p { margin: 0; font-size: 11px; line-height: 1.45; }.weather-action-error button { min-height: 34px; flex: none; }
+.weather-hourly, .weather-daily { min-width: 0; margin-top: 24px; }
+.weather-hourly h3, .weather-daily h3 { margin: 0 0 10px; font-size: 11px; font-weight: 650; }
+.weather-hourly ul { width: 100%; max-width: 100%; display: flex; gap: 7px; margin: 0; padding: 0 0 8px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; list-style: none; }
+.weather-hourly li { width: 78px; min-width: 78px; display: grid; justify-items: center; gap: 6px; padding: 10px 6px; border: 1px solid rgba(255,255,255,.1); border-radius: 11px; background: rgba(255,255,255,.045); }
+.weather-hourly time, .weather-hourly small { color: rgba(255,255,255,.48); font-size: 9px; }.weather-hourly strong { font-size: 11px; }.weather-glyph { font-size: 18px; }
+.weather-daily ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.weather-daily li { min-width: 0; display: grid; grid-template-columns: minmax(72px,1fr) 28px minmax(58px,.75fr) auto; align-items: center; gap: 7px; min-height: 42px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 10px; }
+.weather-daily li:last-child { border-bottom: 0; }.weather-daily-rain { color: rgba(255,255,255,.45); }.weather-daily strong { text-align: right; white-space: nowrap; }
+.weather-refresh { width: 100%; margin-top: 19px; }
+[data-appearance="light"] .weather-location-controls, [data-appearance="light"] .weather-daily li { border-color: rgba(21,38,58,.12); }
+[data-appearance="light"] .weather-location-controls > p, [data-appearance="light"] .weather-location-results span, [data-appearance="light"] .weather-eyebrow, [data-appearance="light"] .weather-current-meta, [data-appearance="light"] .weather-hourly time, [data-appearance="light"] .weather-hourly small, [data-appearance="light"] .weather-daily-rain, [data-appearance="light"] .weather-empty-state, [data-appearance="light"] .weather-state { color: rgba(24,35,51,.58); }
+[data-appearance="light"] .weather-location-results button, [data-appearance="light"] .weather-geolocation-action > button, [data-appearance="light"] .weather-action-error button, [data-appearance="light"] .weather-refresh, [data-appearance="light"] .weather-unit-toggle button { color: #182333; }
 .state-shell { min-height: 100vh; display: grid; place-items: center; background: #181529; color: #f5f2fb; }.state-shell section { text-align: center; }
 @media (max-width: 980px) {
   .workspace { grid-template-columns: 1fr; width: min(720px, 100%); margin-top: clamp(44px, 7vh, 72px); }

@@ -1,0 +1,264 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import type { TemperatureUnit, WeatherLocation } from '../../domain/models';
+import { WeatherDrawer, type GeolocationAdapter } from './WeatherDrawer';
+import type { WeatherClient, WeatherForecast } from './types';
+import type { WeatherState } from './useWeather';
+
+const fuzhou: WeatherLocation = {
+  id: 'fuzhou-cn',
+  name: '福州',
+  admin: '福建',
+  country: '中国',
+  latitude: 26.08,
+  longitude: 119.3,
+  timezone: 'Asia/Shanghai',
+};
+
+const xiamen: WeatherLocation = {
+  id: 'xiamen-cn',
+  name: '厦门',
+  admin: '福建',
+  country: '中国',
+  latitude: 24.48,
+  longitude: 118.08,
+  timezone: 'Asia/Shanghai',
+};
+
+function makeForecast(): WeatherForecast {
+  return {
+    location: fuzhou,
+    current: {
+      time: '2026-07-22T09:00',
+      temperature: 30,
+      apparentTemperature: 34,
+      weatherCode: 0,
+      isDay: true,
+    },
+    hourly: Array.from({ length: 13 }, (_, index) => ({
+      time: `2026-07-22T${String(index + 10).padStart(2, '0')}:00`,
+      temperature: 30 + index,
+      precipitationProbability: index,
+      weatherCode: index % 2 ? 61 : 0,
+      isDay: index < 9,
+    })),
+    daily: Array.from({ length: 6 }, (_, index) => ({
+      date: `2026-07-${String(index + 22).padStart(2, '0')}`,
+      temperatureMax: 34 + index,
+      temperatureMin: 26 + index,
+      precipitationProbability: 20 + index,
+      weatherCode: index % 2 ? 61 : 0,
+    })),
+    fetchedAt: new Date('2026-07-22T01:15:00.000Z').getTime(),
+  };
+}
+
+function client(searchLocations: WeatherClient['searchLocations'] = vi.fn().mockResolvedValue([])): WeatherClient {
+  return { searchLocations, getForecast: vi.fn() };
+}
+
+function renderDrawer({
+  state = { kind: 'unconfigured' },
+  searchLocations,
+  unit = 'celsius',
+  geolocation,
+  onLocationChange = vi.fn(),
+  onUnitChange = vi.fn(),
+  onRefresh = vi.fn(),
+}: {
+  state?: WeatherState;
+  searchLocations?: WeatherClient['searchLocations'];
+  unit?: TemperatureUnit;
+  geolocation?: GeolocationAdapter;
+  onLocationChange?: (location: WeatherLocation) => void;
+  onUnitChange?: (unit: TemperatureUnit) => void;
+  onRefresh?: () => void | Promise<void>;
+} = {}) {
+  return render(
+    <WeatherDrawer
+      state={state}
+      client={client(searchLocations)}
+      unit={unit}
+      location={state.kind === 'ready' ? state.forecast.location : undefined}
+      onLocationChange={onLocationChange}
+      onUnitChange={onUnitChange}
+      onRefresh={onRefresh}
+      geolocation={geolocation}
+    />,
+  );
+}
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe('WeatherDrawer city selection', () => {
+  it('debounces non-empty city searches and exposes results as candidate buttons', async () => {
+    vi.useFakeTimers();
+    const search = vi.fn<WeatherClient['searchLocations']>().mockResolvedValue([fuzhou, xiamen]);
+    renderDrawer({ searchLocations: search });
+
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: '   ' } });
+    await act(async () => vi.advanceTimersByTime(350));
+    expect(search).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: '福' } });
+    await act(async () => vi.advanceTimersByTime(299));
+    expect(search).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(search).toHaveBeenCalledWith('福', expect.any(AbortSignal));
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole('button', { name: /选择福州/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /选择厦门/ })).toBeInTheDocument();
+  });
+
+  it('aborts a superseded search and saves the selected candidate', async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    const search = vi.fn<WeatherClient['searchLocations']>((_query, signal) => {
+      signals.push(signal!);
+      return Promise.resolve([fuzhou]);
+    });
+    const onLocationChange = vi.fn();
+    renderDrawer({ searchLocations: search, onLocationChange });
+
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: '福' } });
+    await act(async () => vi.advanceTimersByTime(300));
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: '厦' } });
+    expect(signals[0]?.aborted).toBe(true);
+    await act(async () => vi.advanceTimersByTime(300));
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: /选择福州/ }));
+    expect(onLocationChange).toHaveBeenCalledWith(fuzhou);
+  });
+});
+
+describe('WeatherDrawer opt-in geolocation', () => {
+  it('does not request geolocation until the user clicks the action', () => {
+    const geolocation: GeolocationAdapter = { getCurrentPosition: vi.fn() };
+    renderDrawer({ geolocation });
+    expect(geolocation.getCurrentPosition).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '使用当前位置' }));
+    expect(geolocation.getCurrentPosition).toHaveBeenCalledOnce();
+  });
+
+  it('converts coordinates into a saved 当前所在位置 without reverse geocoding', () => {
+    const onLocationChange = vi.fn();
+    const geolocation: GeolocationAdapter = {
+      getCurrentPosition(success) {
+        success({ coords: { latitude: 26.08044, longitude: 119.30049 } });
+      },
+    };
+    renderDrawer({ geolocation, onLocationChange });
+    fireEvent.click(screen.getByRole('button', { name: '使用当前位置' }));
+    expect(onLocationChange).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'coords:26.080,119.300',
+      name: '当前位置',
+      latitude: 26.08044,
+      longitude: 119.30049,
+    }));
+  });
+
+  it('explains a denied location request next to the recovery action', () => {
+    const geolocation: GeolocationAdapter = {
+      getCurrentPosition(_success, failure) {
+        failure?.({ code: 1, message: 'denied' });
+      },
+    };
+    renderDrawer({ geolocation });
+    fireEvent.click(screen.getByRole('button', { name: '使用当前位置' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('位置权限被拒绝');
+    expect(screen.getByRole('button', { name: '使用当前位置' })).toBeInTheDocument();
+  });
+});
+
+describe('WeatherDrawer forecast states', () => {
+  it('presents the unconfigured and loading states', () => {
+    const view = renderDrawer();
+    expect(screen.getByText('选择城市后查看天气')).toBeInTheDocument();
+    view.rerender(
+      <WeatherDrawer
+        state={{ kind: 'loading' }} client={client()} unit="celsius"
+        onLocationChange={vi.fn()} onUnitChange={vi.fn()} onRefresh={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('正在获取天气');
+  });
+
+  it('shows current conditions, exactly 12 hours, 5 days, and updated time', () => {
+    renderDrawer({ state: { kind: 'ready', forecast: makeForecast(), refreshing: false, stale: false } });
+    expect(screen.getByRole('heading', { name: '福州' })).toBeInTheDocument();
+    expect(screen.getByText('晴朗')).toBeInTheDocument();
+    expect(screen.getAllByText('30℃').length).toBeGreaterThan(0);
+    expect(screen.getByText(/更新于 09:15/)).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '未来 12 小时' }).children).toHaveLength(12);
+    expect(screen.getByRole('list', { name: '未来 5 天' }).children).toHaveLength(5);
+  });
+
+  it('changes units and renders converted Fahrenheit temperatures', () => {
+    const onUnitChange = vi.fn();
+    const state: WeatherState = { kind: 'ready', forecast: makeForecast(), refreshing: false, stale: false };
+    const view = renderDrawer({ state, unit: 'celsius', onUnitChange });
+    fireEvent.click(screen.getByRole('button', { name: '华氏度' }));
+    expect(onUnitChange).toHaveBeenCalledWith('fahrenheit');
+    view.rerender(
+      <WeatherDrawer state={state} client={client()} unit="fahrenheit" location={fuzhou}
+        onLocationChange={vi.fn()} onUnitChange={onUnitChange} onRefresh={vi.fn()} />,
+    );
+    expect(screen.getAllByText('86℉').length).toBeGreaterThan(0);
+  });
+
+  it('keeps provider-local hourly times when the city uses another timezone', () => {
+    const forecast = makeForecast();
+    forecast.location = { ...forecast.location, timezone: 'America/New_York' };
+    renderDrawer({ state: { kind: 'ready', forecast, refreshing: false, stale: false } });
+    expect(screen.getByRole('list', { name: '未来 12 小时' }).querySelector('time')).toHaveTextContent('10:00');
+  });
+
+  it('keeps cached forecast visible while refreshing or reporting a stale error', () => {
+    const forecast = makeForecast();
+    const view = renderDrawer({ state: { kind: 'ready', forecast, refreshing: true, stale: true } });
+    expect(screen.getByRole('status')).toHaveTextContent('正在刷新');
+    expect(screen.getAllByText('30℃').length).toBeGreaterThan(0);
+
+    view.rerender(
+      <WeatherDrawer state={{ kind: 'ready', forecast, refreshing: false, stale: true, error: '网络离线' }}
+        client={client()} unit="celsius" location={fuzhou} onLocationChange={vi.fn()}
+        onUnitChange={vi.fn()} onRefresh={vi.fn()} />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('网络离线');
+    expect(screen.getAllByText('30℃').length).toBeGreaterThan(0);
+  });
+
+  it('offers retry for a first-load error and manual refresh for ready data', () => {
+    const onRefresh = vi.fn();
+    const view = renderDrawer({ state: { kind: 'error', message: '天气服务不可用' }, onRefresh });
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <WeatherDrawer state={{ kind: 'ready', forecast: makeForecast(), refreshing: false, stale: false }}
+        client={client()} unit="celsius" location={fuzhou} onLocationChange={vi.fn()}
+        onUnitChange={vi.fn()} onRefresh={onRefresh} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '刷新天气' }));
+    expect(onRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps search failure by the city search while preserving cached data', async () => {
+    vi.useFakeTimers();
+    const search = vi.fn<WeatherClient['searchLocations']>().mockRejectedValue(new Error('城市服务离线'));
+    renderDrawer({
+      state: { kind: 'ready', forecast: makeForecast(), refreshing: false, stale: false },
+      searchLocations: search,
+    });
+    fireEvent.change(screen.getByLabelText('搜索城市'), { target: { value: '福州' } });
+    await act(async () => vi.advanceTimersByTime(300));
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole('alert')).toHaveTextContent('城市服务离线');
+    expect(screen.getAllByText('30℃').length).toBeGreaterThan(0);
+  });
+});
