@@ -122,4 +122,11 @@ describe('isFreshWeatherCache', () => {
   it('is stale when the selected location ID differs', () => {
     expect(isFreshWeatherCache(forecast(), { ...location, id: 'xiamen-cn' }, 1_000)).toBe(false);
   });
+
+  it('is stale when the cache timestamp is in the future', () => {
+    const now = 10_000;
+
+    expect(isFreshWeatherCache(forecast(now + 1), location, now)).toBe(false);
+    expect(isFreshWeatherCache(forecast(now + THIRTY_MINUTES), location, now)).toBe(false);
+  });
 });

@@ -190,8 +190,9 @@ export function useWeather({
     const selection = selectionRef.current;
     if (selection.id !== selectedLocation.id) return Promise.resolve();
     const initialLoad = initialLoadRef.current;
-    if (!options.force && initialLoad?.selection === selection.version) {
-      return initialLoad.promise;
+    if (initialLoad?.selection === selection.version) {
+      if (!options.force) return initialLoad.promise;
+      initialLoadRef.current = undefined;
     }
     const cachedForecast = stateRef.current.kind === 'ready'
       ? stateRef.current.forecast
@@ -227,6 +228,7 @@ export function useWeather({
     }
 
     updateState({ kind: 'loading' });
+    let initialLoad!: InitialLoad;
     const load = (async () => {
       let entry: WeatherForecast | undefined;
       try {
@@ -234,6 +236,7 @@ export function useWeather({
       } catch {
         entry = undefined;
       }
+      if (initialLoadRef.current !== initialLoad) return;
       if (!isActiveSelection(selectedLocation.id, version)) return;
 
       if (entry?.location.id === selectedLocation.id) {
@@ -247,7 +250,7 @@ export function useWeather({
       }
       await runRefresh(selectedLocation, {}, undefined, version);
     })();
-    const initialLoad = { selection: version, promise: load };
+    initialLoad = { selection: version, promise: load };
     initialLoadRef.current = initialLoad;
     const clearInitialLoad = () => {
       if (initialLoadRef.current === initialLoad) initialLoadRef.current = undefined;

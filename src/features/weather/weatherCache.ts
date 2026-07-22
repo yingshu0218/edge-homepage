@@ -104,7 +104,9 @@ export function isFreshWeatherCache(
   location: WeatherLocation,
   now: number,
 ): boolean {
+  const age = now - entry.fetchedAt;
   return Number.isFinite(now)
     && entry.location.id === location.id
-    && now - entry.fetchedAt <= WEATHER_CACHE_MAX_AGE;
+    && age >= 0
+    && age <= WEATHER_CACHE_MAX_AGE;
 }

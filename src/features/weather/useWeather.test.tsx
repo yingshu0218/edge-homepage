@@ -305,6 +305,44 @@ describe('useWeather', () => {
     expect(getForecast).not.toHaveBeenCalled();
   });
 
+  it('keeps a forced refresh authoritative over an older pending cache read', async () => {
+    const now = 2_000_000;
+    const cached = forecast(fuzhou, now - 1);
+    const updated = forecast(fuzhou, now);
+    const cacheRead = deferred<WeatherForecast | undefined>();
+    const request = deferred<WeatherForecast>();
+    const saves: WeatherForecast[] = [];
+    const cache: WeatherCacheStore = {
+      load: () => cacheRead.promise,
+      async save(next) {
+        saves.push(next);
+      },
+      clear: vi.fn(),
+    };
+    const getForecast = vi.fn<WeatherClient['getForecast']>().mockReturnValue(request.promise);
+    const { result } = renderHook(() => useWeather({
+      location: fuzhou, client: client(getForecast), cache, now: () => now,
+    }));
+
+    let forcedRefresh!: Promise<void>;
+    act(() => {
+      forcedRefresh = result.current.refresh({ force: true });
+    });
+    request.resolve(updated);
+    await act(async () => forcedRefresh);
+    expect(result.current.state).toEqual({
+      kind: 'ready', forecast: updated, refreshing: false, stale: false,
+    });
+
+    await act(async () => cacheRead.resolve(cached));
+
+    expect(result.current.state).toEqual({
+      kind: 'ready', forecast: updated, refreshing: false, stale: false,
+    });
+    expect(getForecast).toHaveBeenCalledOnce();
+    expect(saves).toEqual([updated]);
+  });
+
   it('removes the visibility listener and ignores an in-flight result after unmount', async () => {
     const now = 2_000_000;
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
