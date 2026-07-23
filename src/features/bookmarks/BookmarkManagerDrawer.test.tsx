@@ -47,6 +47,19 @@ describe('BookmarkManagerDrawer', () => {
     expect(screen.getByRole('checkbox', { name: '选择 GitHub' })).toBeChecked();
   });
 
+  it('announces the filtered result count while retaining total and selected counts', () => {
+    renderDrawer();
+
+    expect(screen.getByText('4 个书签')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索书签' }), { target: { value: 'github' } });
+
+    const filteredCount = screen.getByRole('status');
+    expect(filteredCount).toHaveTextContent('筛选结果 1 个');
+    expect(filteredCount).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByText('4 个书签')).toBeInTheDocument();
+    expect(screen.getByText('已选择 0 个书签')).toBeInTheDocument();
+  });
+
   it('asks for confirmation before deleting selected bookmarks', () => {
     const { onDelete } = renderDrawer();
     fireEvent.click(screen.getByRole('checkbox', { name: '选择 GitHub' }));

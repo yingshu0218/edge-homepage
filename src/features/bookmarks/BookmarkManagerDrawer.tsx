@@ -86,7 +86,10 @@ export function BookmarkManagerDrawer({ snapshot, groupId, onEdit, onDelete, onM
 
       <div className="bookmark-manager-select-all">
         <label><input type="checkbox" aria-label="选择所有可见书签" checked={allVisibleSelected} disabled={visibleIds.length === 0} onChange={toggleVisibleSelection} />全选当前结果</label>
-        <span>已选择 {selectedIds.length} 个书签</span>
+        <div className="bookmark-manager-counts">
+          {query.trim() && <span role="status" aria-live="polite" aria-atomic="true">筛选结果 {visibleBookmarks.length} 个</span>}
+          <span>已选择 {selectedIds.length} 个书签</span>
+        </div>
       </div>
 
       {visibleBookmarks.length === 0 ? <p className="bookmark-manager-empty">{query.trim() ? '未找到匹配的书签' : '当前分组暂无书签'}</p> : (

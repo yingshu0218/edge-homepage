@@ -46,13 +46,30 @@ function drawerLabel(drawer: Exclude<Drawer, null>): string {
   return ({ theme: '主题设置', settings: '应用设置', sort: '书签排序', groups: '分组管理', bookmarks: '书签管理', time: '时间设置', weather: '天气' })[drawer];
 }
 
+function normalizeActiveOrders<T extends { id: string; order: number; deletedAt?: number }>(records: T[]): T[] {
+  const orders = new Map(records
+    .filter(({ deletedAt }) => deletedAt === undefined)
+    .sort((left, right) => left.order - right.order)
+    .map(({ id }, order) => [id, order]));
+  return records.map((record) => orders.has(record.id) && record.order !== orders.get(record.id)
+    ? { ...record, order: orders.get(record.id)! }
+    : record);
+}
+
 function mergeImported(current: AppSnapshot, incoming: AppSnapshot): AppSnapshot {
   const groupIds = new Set(current.groups.map(({ id }) => id));
   const bookmarkIds = new Set(current.bookmarks.map(({ id }) => id));
+  const groups = normalizeActiveOrders([...current.groups, ...incoming.groups.filter(({ id }) => !groupIds.has(id))]);
+  const mergedBookmarks = [...current.bookmarks, ...incoming.bookmarks.filter(({ id }) => !bookmarkIds.has(id))];
+  const bookmarks = groups.reduce((result, group) => {
+    const groupBookmarks = normalizeActiveOrders(result.filter((bookmark) => bookmark.groupId === group.id));
+    const normalizedById = new Map(groupBookmarks.map((bookmark) => [bookmark.id, bookmark]));
+    return result.map((bookmark) => normalizedById.get(bookmark.id) ?? bookmark);
+  }, mergedBookmarks);
   return {
     ...current,
-    groups: [...current.groups, ...incoming.groups.filter(({ id }) => !groupIds.has(id))],
-    bookmarks: [...current.bookmarks, ...incoming.bookmarks.filter(({ id }) => !bookmarkIds.has(id))],
+    groups,
+    bookmarks,
     settings: { ...current.settings, ...incoming.settings, updatedAt: incoming.settings.updatedAt },
   };
 }

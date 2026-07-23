@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot } from '../domain/models';
+import { validateSnapshot } from '../domain/snapshotValidator';
 import type { WeatherClient, WeatherForecast } from '../features/weather/types';
 import { ChromeWeatherCache } from '../features/weather/weatherCache';
+import { SnapshotRepository } from '../storage/snapshotRepository';
 import type { ChromeStorageArea } from '../storage/types';
 import { exportSnapshot } from '../storage/transfer';
 import { App, type AppServices } from './App';
@@ -31,6 +33,18 @@ function fakeServices(snapshot: AppSnapshot, load?: () => Promise<AppSnapshot>):
     weather,
     weatherCache: { load: vi.fn().mockResolvedValue(undefined), save: vi.fn().mockResolvedValue(undefined), clear: vi.fn().mockResolvedValue(undefined) },
     navigate: vi.fn(), download: vi.fn(), now: () => 1_752_636_060_000, createId: () => 'docs',
+  };
+}
+
+function memoryChromeStorage(): ChromeStorageArea {
+  const values: Record<string, unknown> = {};
+  return {
+    async get(keys) {
+      if (typeof keys === 'string') return keys in values ? { [keys]: values[keys] } : {};
+      if (Array.isArray(keys)) return Object.fromEntries(keys.filter((key) => key in values).map((key) => [key, values[key]]));
+      return { ...values };
+    },
+    async set(items) { Object.assign(values, items); },
   };
 }
 
@@ -239,5 +253,69 @@ describe('new tab application', () => {
     fireEvent.click(screen.getByRole('button', { name: '主题' }));
     fireEvent.click(screen.getByRole('listitem', { name: '极光' }));
     await waitFor(() => expect(services.repository.save).toHaveBeenLastCalledWith(expect.objectContaining({ settings: expect.objectContaining({ themeId: 'aurora' }) })));
+  });
+
+  it('normalizes independently appended group and bookmark orders before persisting a merge', async () => {
+    const current = createDefaultSnapshot();
+    current.groups[0]!.name = '当前开发';
+    current.groups.push(
+      { id: 'current-group', name: '当前追加分组', order: 1, updatedAt: 10 },
+      { id: 'current-group-tombstone', name: '当前已删除分组', order: 1, updatedAt: 11, deletedAt: 11 },
+    );
+    current.bookmarks[0]!.title = '当前 GitHub';
+    current.bookmarks.push(
+      { id: 'current-bookmark', title: '当前追加书签', url: 'https://current.example/', groupId: 'development', order: 4, createdAt: 10, updatedAt: 10 },
+      { id: 'current-bookmark-tombstone', title: '当前已删除书签', url: 'https://deleted-current.example/', groupId: 'development', order: 4, createdAt: 11, updatedAt: 11, deletedAt: 11 },
+    );
+
+    const incoming = createDefaultSnapshot();
+    incoming.groups[0]!.name = '导入开发';
+    incoming.groups.push(
+      { id: 'incoming-group', name: '导入追加分组', order: 1, updatedAt: 20 },
+      { id: 'incoming-group-tombstone', name: '导入已删除分组', order: 1, updatedAt: 21, deletedAt: 21 },
+    );
+    incoming.bookmarks[0]!.title = '导入 GitHub';
+    incoming.bookmarks.push(
+      { id: 'incoming-bookmark', title: '导入追加书签', url: 'https://incoming.example/', groupId: 'development', order: 4, createdAt: 20, updatedAt: 20 },
+      { id: 'incoming-bookmark-tombstone', title: '导入已删除书签', url: 'https://deleted-incoming.example/', groupId: 'development', order: 4, createdAt: 21, updatedAt: 21, deletedAt: 21 },
+    );
+
+    const repository = new SnapshotRepository(memoryChromeStorage());
+    await repository.save(current);
+    const services = fakeServices(current);
+    services.repository = repository;
+    const firstMount = render(<App services={services} />);
+    await screen.findByText('当前 GitHub');
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    fireEvent.click(screen.getByLabelText('合并数据'));
+    const backup = await exportSnapshot(incoming).text();
+    fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([backup], 'independent-backup.json')] } });
+    fireEvent.click(await screen.findByRole('button', { name: '确认导入' }));
+
+    await waitFor(async () => expect((await repository.load()).groups.some(({ id }) => id === 'incoming-group')).toBe(true));
+    const persisted = await repository.load();
+    expect(() => validateSnapshot(persisted, 'merged snapshot')).not.toThrow();
+    expect(persisted.groups.filter(({ deletedAt }) => deletedAt === undefined).map(({ id, order }) => [id, order])).toEqual([
+      ['development', 0], ['current-group', 1], ['incoming-group', 2],
+    ]);
+    expect(persisted.bookmarks.filter(({ groupId, deletedAt }) => groupId === 'development' && deletedAt === undefined).map(({ id, order }) => [id, order])).toEqual([
+      ['github', 0], ['mdn', 1], ['stackoverflow', 2], ['npm', 3], ['current-bookmark', 4], ['incoming-bookmark', 5],
+    ]);
+    expect(persisted.groups.find(({ id }) => id === 'development')?.name).toBe('当前开发');
+    expect(persisted.bookmarks.find(({ id }) => id === 'github')?.title).toBe('当前 GitHub');
+    expect(persisted.groups).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'current-group-tombstone', deletedAt: 11 }),
+      expect.objectContaining({ id: 'incoming-group-tombstone', deletedAt: 21 }),
+    ]));
+    expect(persisted.bookmarks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'current-bookmark-tombstone', deletedAt: 11 }),
+      expect.objectContaining({ id: 'incoming-bookmark-tombstone', deletedAt: 21 }),
+    ]));
+
+    firstMount.unmount();
+    render(<App services={services} />);
+    expect(await screen.findByText('导入追加书签')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '导入追加分组' })).toBeInTheDocument();
+    expect(screen.queryByText('导入 GitHub')).not.toBeInTheDocument();
   });
 });

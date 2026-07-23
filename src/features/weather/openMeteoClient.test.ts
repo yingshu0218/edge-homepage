@@ -46,6 +46,19 @@ function validForecastResponse(): unknown {
   };
 }
 
+function validLocationResult(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 1790645,
+    name: '厦门',
+    admin1: '福建',
+    country: '中国',
+    latitude: 24.4798,
+    longitude: 118.0894,
+    timezone: 'Asia/Shanghai',
+    ...overrides,
+  };
+}
+
 describe('Open-Meteo location search', () => {
   it('URL-encodes a query and maps provider results into locations', async () => {
     const fetchFn = vi.fn(async (_input: RequestInfo | URL) => jsonResponse({
@@ -70,6 +83,27 @@ describe('Open-Meteo location search', () => {
     expect(url.origin + url.pathname).toBe('https://geocoding-api.open-meteo.com/v1/search');
     expect(url.searchParams.get('name')).toBe('厦门');
     expect(String(fetchFn.mock.calls[0]?.[0])).toContain('%E5%8E%A6%E9%97%A8');
+  });
+
+  it.each([
+    ['an empty string ID', { id: '' }],
+    ['a whitespace-only string ID', { id: '   ' }],
+    ['a fractional numeric ID', { id: 1790645.5 }],
+    ['latitude above 90', { latitude: 90.001 }],
+    ['latitude below -90', { latitude: -90.001 }],
+    ['longitude above 180', { longitude: 180.001 }],
+    ['longitude below -180', { longitude: -180.001 }],
+  ])('rejects a geocoding result with %s', async (_label, overrides) => {
+    const client = createOpenMeteoClient(async () => jsonResponse({ results: [validLocationResult(overrides)] }));
+
+    await expect(client.searchLocations('厦门')).rejects.toThrow('天气服务暂时不可用，请稍后重试。');
+  });
+
+  it('rejects a non-finite numeric location ID', async () => {
+    const json = JSON.stringify({ results: [validLocationResult()] }).replace('"id":1790645', '"id":1e400');
+    const client = createOpenMeteoClient(async () => new Response(json, { headers: { 'Content-Type': 'application/json' } }));
+
+    await expect(client.searchLocations('厦门')).rejects.toThrow('天气服务暂时不可用，请稍后重试。');
   });
 });
 

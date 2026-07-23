@@ -65,6 +65,15 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function isLocationId(value: unknown): value is string | number {
+  return (typeof value === 'string' && value.trim().length > 0)
+    || (isFiniteNumber(value) && Number.isInteger(value));
+}
+
+function isCoordinate(value: unknown, minimum: number, maximum: number): value is number {
+  return isFiniteNumber(value) && value >= minimum && value <= maximum;
+}
+
 function isWeatherCode(value: unknown): value is number {
   return isFiniteNumber(value) && Number.isInteger(value);
 }
@@ -104,11 +113,11 @@ function parseLocation(value: unknown): WeatherLocation {
   if (!isRecord(value)) throw new Error('invalid location');
 
   const id = value.id;
-  if ((typeof id !== 'string' && typeof id !== 'number')
+  if (!isLocationId(id)
     || !isNonEmptyString(value.name)
     || !isNonEmptyString(value.country)
-    || !isFiniteNumber(value.latitude)
-    || !isFiniteNumber(value.longitude)
+    || !isCoordinate(value.latitude, -90, 90)
+    || !isCoordinate(value.longitude, -180, 180)
     || !isNonEmptyString(value.timezone)
     || (value.admin1 !== undefined && typeof value.admin1 !== 'string')) {
     throw new Error('invalid location');

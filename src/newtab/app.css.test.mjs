@@ -15,3 +15,14 @@ describe('compact topbar CSS', () => {
     expect(css).toMatch(/@media \(max-width: 430px\)[\s\S]*?\.top-actions \{ gap: 4px; \}/);
   });
 });
+
+describe('drawer palette CSS', () => {
+  it('keeps every drawer on an explicit dark palette in light appearance', () => {
+    expect(css).toMatch(/\.drawer \{[^}]*--drawer-text: #f5f2fb;[^}]*--drawer-muted: rgba\(245,242,251,\.66\);[^}]*background: #191529;[^}]*color: var\(--drawer-text\);[^}]*color-scheme: dark;/);
+    expect(css).toContain('.drawer :where(header, section, form, fieldset, h1, h2, h3, p, label, legend, time, output) { color: inherit; }');
+    expect(css).toMatch(/\.drawer :where\(input:not\(\[type="range"\]\), select\) \{[^}]*background: var\(--drawer-control\);[^}]*color: var\(--drawer-text\);/);
+    expect(css).toContain('.drawer :where(button) { color: inherit; }');
+    expect(css).toContain('.drawer input::placeholder { color: var(--drawer-muted); }');
+    expect(css).not.toMatch(/\[data-appearance="light"\] \.weather-/);
+  });
+});
