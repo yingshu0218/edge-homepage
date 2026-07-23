@@ -318,4 +318,50 @@ describe('new tab application', () => {
     expect(screen.getByRole('tab', { name: '导入追加分组' })).toBeInTheDocument();
     expect(screen.queryByText('导入 GitHub')).not.toBeInTheDocument();
   });
+
+  it('drops imported active bookmarks when the current duplicate group is deleted and reloads the valid merge', async () => {
+    const current = createDefaultSnapshot();
+    current.groups.push({ id: 'shared-archive', name: '当前已删除分组', order: 1, updatedAt: 30, deletedAt: 30 });
+    current.bookmarks.push({
+      id: 'current-archive-history', title: '当前删除历史', url: 'https://current-history.example/',
+      groupId: 'shared-archive', order: 0, createdAt: 30, updatedAt: 30, deletedAt: 30,
+    });
+
+    const incoming = createDefaultSnapshot();
+    incoming.settings.bookmarkDisplayLimit = 12;
+    incoming.groups.push({ id: 'shared-archive', name: '导入活动分组', order: 1, updatedAt: 40 });
+    incoming.bookmarks.push(
+      { id: 'incoming-active', title: '不应恢复的活动书签', url: 'https://active.example/', groupId: 'shared-archive', order: 0, createdAt: 40, updatedAt: 40 },
+      { id: 'incoming-archive-history', title: '导入删除历史', url: 'https://incoming-history.example/', groupId: 'shared-archive', order: 1, createdAt: 41, updatedAt: 41, deletedAt: 41 },
+    );
+
+    const repository = new SnapshotRepository(memoryChromeStorage());
+    await repository.save(current);
+    const services = fakeServices(current);
+    services.repository = repository;
+    const firstMount = render(<App services={services} />);
+    await screen.findByText('GitHub');
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    fireEvent.click(screen.getByLabelText('合并数据'));
+    const backup = await exportSnapshot(incoming).text();
+    fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([backup], 'deleted-group-conflict.json')] } });
+    fireEvent.click(await screen.findByRole('button', { name: '确认导入' }));
+
+    await waitFor(async () => expect((await repository.load()).bookmarks.some(({ id }) => id === 'incoming-archive-history')).toBe(true));
+    const persisted = await repository.load();
+    expect(() => validateSnapshot(persisted, 'deleted-group merge')).not.toThrow();
+    expect(persisted.groups.find(({ id }) => id === 'shared-archive')).toMatchObject({ name: '当前已删除分组', deletedAt: 30 });
+    expect(persisted.bookmarks.find(({ id }) => id === 'incoming-active')).toBeUndefined();
+    expect(persisted.bookmarks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'current-archive-history', deletedAt: 30 }),
+      expect.objectContaining({ id: 'incoming-archive-history', deletedAt: 41 }),
+    ]));
+
+    firstMount.unmount();
+    render(<App services={services} />);
+    await screen.findByText('GitHub');
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    expect(screen.getByRole('combobox', { name: '每组显示书签' })).toHaveValue('12');
+    expect(screen.queryByText('不应恢复的活动书签')).not.toBeInTheDocument();
+  });
 });

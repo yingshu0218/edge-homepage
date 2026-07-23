@@ -130,3 +130,131 @@ npm run build                    passed (TypeScript + Vite, 54 modules)
 node manifest/package validator  passed
 git diff --check                 passed
 ```
+
+## Local bookmarks/time/weather final-review follow-up — 2026-07-23
+
+Initial four-findings implementation commit: `4334c6c060b119c2e0fd90bf78b21dd361078864`.
+
+### Result
+
+All four final-review findings were fixed in one change set:
+
+1. Merge import now normalizes active group orders and active bookmark orders independently within each group after applying the existing current-snapshot-wins duplicate-ID rule. Deleted records retain their tombstones and order metadata. An App integration test imports two independently extended, individually valid backups, validates the merged schema-2 snapshot, reads it through the real `SnapshotRepository`, unmounts, reloads, and confirms the imported group/bookmark remain persisted.
+2. Every drawer now owns an explicit dark palette (`#191529` surface, `#f5f2fb` text, dark native color scheme, dedicated muted/border/control colors) rather than inheriting light root text. Base coverage includes headings, body copy, labels, legends, time/output, inputs, selects, buttons, and the light-mode close icon. The conflicting light-appearance weather overrides were removed. The palette therefore applies consistently to theme, settings, sort, group, bookmark, time, and weather drawers.
+3. Open-Meteo geocoding accepts an ID only when it is a non-blank string or a finite integer. Latitude must be within `[-90, 90]` and longitude within `[-180, 180]`; malformed provider results still surface the existing Chinese user-safe error.
+4. Bookmark-manager search now exposes `筛选结果 N 个` as a polite, atomic status while a trimmed query is active. The original total count and selected count remain visible.
+
+### TDD RED evidence
+
+- `npm test -- src/newtab/App.test.tsx`
+  - 1 expected failure: the independent-backup merge was rendered optimistically but `SnapshotRepository.save()` rejected `Corrupted local snapshot: duplicate active group order`; reload did not contain the incoming group.
+- `npm test -- src/newtab/app.css.test.mjs`
+  - 1 expected failure: the drawer had no explicit palette variables/text/color scheme and still contained light-mode weather overrides.
+- `npm test -- src/features/weather/openMeteoClient.test.ts`
+  - 7 expected failures: empty/blank/fractional IDs and all four coordinate boundary violations resolved instead of rejecting.
+- Non-finite ID regression proof: with the finite/integer guard temporarily reverted, `npm test -- src/features/weather/openMeteoClient.test.ts -t "non-finite numeric location ID"` failed because `1e400` mapped to the string `Infinity`; restoring the guard made the complete 15-test file pass.
+- `npm test -- src/features/bookmarks/BookmarkManagerDrawer.test.tsx`
+  - 1 expected failure: no accessible `status` existed after search filtering.
+
+### Focused GREEN evidence
+
+```text
+npm test -- src/newtab/App.test.tsx src/newtab/app.css.test.mjs src/features/weather/openMeteoClient.test.ts src/features/bookmarks/BookmarkManagerDrawer.test.tsx
+  Test Files  4 passed (4)
+  Tests       39 passed (39)
+```
+
+Additional focused non-finite verification after restoring the guard:
+
+```text
+npm test -- src/features/weather/openMeteoClient.test.ts
+  Test Files  1 passed (1)
+  Tests       15 passed (15)
+```
+
+### Fresh final verification
+
+```text
+npm test
+  Test Files  30 passed (30)
+  Tests       211 passed (211)
+
+npm run build
+  tsc -b passed
+  Vite production build passed
+  65 modules transformed
+
+rg -n "EdgeSyncProvider|SyncCoordinator|chrome\.storage\.sync|Microsoft .*同步|重置同步数据" src/newtab src/features/settings public/manifest.json README.md docs/edge-installation.md
+  no matches (expected rg exit code 1)
+
+git diff --check
+  no output; exit code 0
+```
+
+### Consistency inspection and concerns
+
+- The structural CSS test asserts the drawer-owned surface/text/muted/control palette, inherited text coverage, explicit input/select/button treatment, placeholder contrast, and absence of light-appearance weather overrides.
+- Source inspection confirmed the only remaining light-appearance rules target the page shell/top controls/bookmark cards/mood card; the drawer close icon is explicitly re-overridden by the drawer palette.
+- No implementation concern remains for the four findings. A native Edge screenshot was not produced; the drawer readability conclusion is based on explicit cascade structure plus production-build and DOM/component coverage.
+- The pre-existing unrelated modification to `.superpowers/sdd/task-7-report.md` was intentionally excluded from this commit.
+
+## Deleted winning-group merge follow-up — 2026-07-23
+
+Follow-up implementation commit: this report is committed with the fix; the exact SHA is returned in the task handoff.
+
+### Result
+
+Current-wins merge now handles the remaining group/bookmark conflict without changing the established ID semantics:
+
+- If the current snapshot owns a deleted group ID and the imported snapshot owns an active group with that same ID, the current deleted group remains the resolved record.
+- Imported-only active bookmarks targeting that resolved deleted group are excluded from the merge.
+- Current bookmarks are untouched, and imported deleted-bookmark history is retained.
+- Active group and per-group bookmark order normalization still runs after this filter.
+
+The App regression composes two independently valid schema-2 snapshots, performs a UI merge through the real `SnapshotRepository`, validates the persisted result, proves the current deleted group wins, proves the imported active bookmark is absent, proves current/imported tombstones survive, unmounts, reloads, and confirms imported settings persisted.
+
+### TDD RED/GREEN evidence
+
+RED:
+
+```text
+npm test -- src/newtab/App.test.tsx -t "current duplicate group is deleted"
+  Test Files  1 failed (1)
+  Tests       1 failed | 16 skipped (17)
+  Repository rejection: Corrupted local snapshot: active bookmark references a deleted group
+```
+
+GREEN:
+
+```text
+npm test -- src/newtab/App.test.tsx -t "current duplicate group is deleted"
+  Test Files  1 passed (1)
+  Tests       1 passed | 16 skipped (17)
+
+npm test -- src/newtab/App.test.tsx
+  Test Files  1 passed (1)
+  Tests       17 passed (17)
+```
+
+### Fresh final verification
+
+```text
+npm test
+  Test Files  30 passed (30)
+  Tests       212 passed (212)
+
+npm run build
+  tsc -b passed
+  Vite production build passed
+  65 modules transformed
+
+rg -n "EdgeSyncProvider|SyncCoordinator|chrome\.storage\.sync|Microsoft .*同步|重置同步数据" src/newtab src/features/settings public/manifest.json README.md docs/edge-installation.md
+  no matches (expected rg exit code 1)
+
+git diff --check
+  no output; exit code 0
+```
+
+### Concerns
+
+None for this merge edge case. The unrelated pre-existing `.superpowers/sdd/task-7-report.md` modification remains excluded.

@@ -60,7 +60,10 @@ function mergeImported(current: AppSnapshot, incoming: AppSnapshot): AppSnapshot
   const groupIds = new Set(current.groups.map(({ id }) => id));
   const bookmarkIds = new Set(current.bookmarks.map(({ id }) => id));
   const groups = normalizeActiveOrders([...current.groups, ...incoming.groups.filter(({ id }) => !groupIds.has(id))]);
-  const mergedBookmarks = [...current.bookmarks, ...incoming.bookmarks.filter(({ id }) => !bookmarkIds.has(id))];
+  const deletedGroupIds = new Set(groups.filter(({ deletedAt }) => deletedAt !== undefined).map(({ id }) => id));
+  const importedBookmarks = incoming.bookmarks.filter((bookmark) => !bookmarkIds.has(bookmark.id)
+    && (bookmark.deletedAt !== undefined || !deletedGroupIds.has(bookmark.groupId)));
+  const mergedBookmarks = [...current.bookmarks, ...importedBookmarks];
   const bookmarks = groups.reduce((result, group) => {
     const groupBookmarks = normalizeActiveOrders(result.filter((bookmark) => bookmark.groupId === group.id));
     const normalizedById = new Map(groupBookmarks.map((bookmark) => [bookmark.id, bookmark]));
