@@ -19,6 +19,7 @@ import { useLocalClock } from '../features/time/useLocalClock';
 import { WeatherDrawer } from '../features/weather/WeatherDrawer';
 import { useWeather } from '../features/weather/useWeather';
 import type { WeatherClient } from '../features/weather/types';
+import { convertTemperature, describeWeatherCode } from '../features/weather/weatherCodes';
 import { exportSnapshot, parseSnapshot } from '../storage/transfer';
 import type { SnapshotStorage, WeatherCacheStore } from '../storage/types';
 import './app.css';
@@ -63,6 +64,8 @@ export function App({ services }: { services: AppServices }) {
   const [customBackground, setCustomBackground] = useState<Blob>();
   const [error, setError] = useState<string>();
   const [saveError, setSaveError] = useState<string>();
+  const [backgroundError, setBackgroundError] = useState<string>();
+  const [backgroundLoaded, setBackgroundLoaded] = useState(false);
   const [backgroundFallback, setBackgroundFallback] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -79,6 +82,8 @@ export function App({ services }: { services: AppServices }) {
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const latestSaveRef = useRef(0);
 
   const acceptSnapshot = useCallback((next: AppSnapshot) => {
     setSnapshot(next);
@@ -88,24 +93,26 @@ export function App({ services }: { services: AppServices }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([services.repository.load(), services.backgrounds.get()])
-      .then(([local, background]) => {
+    services.repository.load()
+      .then((local) => {
         if (!active) return;
         acceptSnapshot(local);
-        setCustomBackground(background);
-        setBackgroundFallback(local.settings.useCustomBackground && !background);
       })
       .catch((cause) => active && setError(cause instanceof Error ? cause.message : String(cause)));
+    services.backgrounds.get()
+      .then((background) => { if (active) setCustomBackground(background); })
+      .catch((cause) => active && setBackgroundError(cause instanceof Error ? cause.message : String(cause)))
+      .finally(() => { if (active) setBackgroundLoaded(true); });
     return () => { active = false; };
   }, [acceptSnapshot, services.backgrounds, services.repository]);
 
   useEffect(() => {
     if (!snapshot) return;
-    if (!snapshot.settings.useCustomBackground) setBackgroundFallback(false);
+    setBackgroundFallback(snapshot.settings.useCustomBackground && backgroundLoaded && !customBackground);
     const resolved = resolveTheme(snapshot.settings, customBackground);
     applyResolvedTheme(resolved);
     return () => { if (resolved.isCustom) URL.revokeObjectURL(resolved.imageUrl); };
-  }, [customBackground, snapshot]);
+  }, [backgroundLoaded, customBackground, snapshot]);
 
   useEffect(() => {
     if (!drawer) return;
@@ -117,9 +124,13 @@ export function App({ services }: { services: AppServices }) {
   const weather = useWeather({ location: snapshot?.settings.weatherLocation, client: services.weather, cache: services.weatherCache, now });
   const persist = useCallback(async (next: AppSnapshot) => {
     acceptSnapshot(next);
+    const version = latestSaveRef.current + 1;
+    latestSaveRef.current = version;
     setSaveError(undefined);
-    try { await services.repository.save(next); }
-    catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); }
+    const write = saveQueueRef.current.catch(() => undefined).then(() => services.repository.save(next));
+    saveQueueRef.current = write.catch(() => undefined);
+    try { await write; if (latestSaveRef.current === version) setSaveError(undefined); }
+    catch (cause) { if (latestSaveRef.current === version) setSaveError(cause instanceof Error ? cause.message : String(cause)); }
   }, [acceptSnapshot, services.repository]);
   const updateSettings = useCallback((changes: Partial<AppSnapshot['settings']>) => {
     if (snapshot) void persist({ ...snapshot, settings: { ...snapshot.settings, ...changes, updatedAt: now() } });
@@ -127,6 +138,7 @@ export function App({ services }: { services: AppServices }) {
 
   const openDrawer = (next: Exclude<Drawer, null>, trigger: HTMLButtonElement | null) => {
     drawerTriggerRef.current = trigger;
+    if (next === 'weather') void weather.refresh();
     setDrawer(next);
   };
   const handleDrawerKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
@@ -156,10 +168,16 @@ export function App({ services }: { services: AppServices }) {
     } else await persist(mergeImported(snapshot, imported));
   };
   const reset = async () => {
-    try { await services.backgrounds.clear(); setCustomBackground(undefined); await persist(createDefaultSnapshot()); }
+    try { await Promise.all([services.backgrounds.clear(), services.weatherCache.clear()]); setCustomBackground(undefined); await persist(createDefaultSnapshot()); }
     catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); }
   };
-  const weatherSummary = weather.state.kind === 'ready' ? `${weather.state.forecast.location.name} · ${Math.round(weather.state.forecast.current.temperature)}℃` : '设置天气';
+  const weatherSummary = weather.state.kind === 'ready'
+    ? (() => {
+      const description = describeWeatherCode(weather.state.forecast.current.weatherCode, weather.state.forecast.current.isDay);
+      const unit = snapshot.settings.temperatureUnit === 'fahrenheit' ? '℉' : '℃';
+      return { icon: description.icon, label: description.label, temperature: `${convertTemperature(weather.state.forecast.current.temperature, snapshot.settings.temperatureUnit)}${unit}`, location: weather.state.forecast.location.name };
+    })()
+    : undefined;
 
   return <main className="app-shell">
     <div className="backdrop" aria-hidden="true" />
@@ -167,8 +185,8 @@ export function App({ services }: { services: AppServices }) {
       <a className="brand" href="index.html" aria-label="Day Start 首页">DAY<span>/</span>START</a>
       <nav className="top-actions" aria-label="启动页操作">
         <span className="local-data-label">数据保存在本机</span>
-        <button ref={timeButtonRef} className="summary-button" type="button" aria-label={`时间 ${formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}`} onClick={() => openDrawer('time', timeButtonRef.current)}>{formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: false })}</button>
-        <button ref={weatherButtonRef} className="summary-button" type="button" aria-label={`天气 ${weatherSummary}`} onClick={() => openDrawer('weather', weatherButtonRef.current)}>{weatherSummary}</button>
+        <button ref={timeButtonRef} className="summary-button" type="button" aria-label={`时间 ${formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}`} onClick={() => openDrawer('time', timeButtonRef.current)}>{formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}</button>
+        <button ref={weatherButtonRef} className="summary-button weather-summary" type="button" aria-label={weatherSummary ? `天气 ${weatherSummary.icon} ${weatherSummary.label} · ${weatherSummary.temperature} · ${weatherSummary.location}` : '天气 设置天气'} onClick={() => openDrawer('weather', weatherButtonRef.current)}>{weatherSummary ? <><span className="weather-summary-icon" aria-hidden="true">{weatherSummary.icon}</span><span className="weather-summary-temperature">{weatherSummary.temperature}</span><span className="weather-summary-location">{weatherSummary.location}</span></> : '设置天气'}</button>
         <button ref={themeButtonRef} className="icon-button" type="button" aria-label="主题" onClick={() => openDrawer('theme', themeButtonRef.current)}>◐</button>
         <button ref={settingsButtonRef} className="icon-button" type="button" aria-label="设置" onClick={() => openDrawer('settings', settingsButtonRef.current)}>⚙</button>
       </nav>
@@ -178,10 +196,10 @@ export function App({ services }: { services: AppServices }) {
         <h1>今天去哪里？</h1><p className="date-line">{dateFormatter.format(currentTime)} · {formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}</p>
         <SearchBox searchTemplate={snapshot.settings.searchTemplate} navigate={services.navigate} placeholder="搜索书签、输入网址或执行命令" />
         <div className="section-heading"><strong>置顶</strong><div><button ref={bookmarksButtonRef} type="button" className="sort-manager-button" aria-label="管理书签" onClick={() => openDrawer('bookmarks', bookmarksButtonRef.current)}>管理书签</button><button ref={sortButtonRef} type="button" className="sort-manager-button" onClick={() => openDrawer('sort', sortButtonRef.current)}>管理排序</button><button ref={addButtonRef} type="button" aria-label="添加书签" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>＋ 添加</button></div></div>
-        <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} onViewAll={() => openDrawer('bookmarks', bookmarksButtonRef.current)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
+        <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} onViewAll={(trigger) => openDrawer('bookmarks', trigger)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
         <div className="group-rail"><GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} /><button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button></div>
       </section>
-      <aside className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{backgroundFallback && <p role="status" aria-label="背景回退提示">自定义背景仅保存在原设备，已回退到内置主题。</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</aside>
+      <aside className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{(backgroundFallback || backgroundError) && <p role="status" aria-label="背景回退提示">{backgroundError ? `自定义背景读取失败：${backgroundError}，已回退到内置主题。` : '自定义背景仅保存在原设备，已回退到内置主题。'}</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</aside>
     </div>
     <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
     {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawerLabel(drawer)} onKeyDown={handleDrawerKeyDown}><header><h2>{drawerLabel(drawer)}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawerLabel(drawer)}`} onClick={() => setDrawer(null)}>×</button></header>

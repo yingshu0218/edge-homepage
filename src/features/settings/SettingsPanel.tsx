@@ -10,7 +10,6 @@ export type SettingsPanelProps = {
   snapshot: AppSnapshot;
   onSearchTemplateChange: (searchTemplate: string) => void;
   onSettingsChange: (changes: Partial<AppSnapshot['settings']>) => void;
-  onThemeParametersChange?: (parameters: { overlay: number; blur: number }) => void;
   onImport: (text: string, mode: ImportMode) => void | Promise<void>;
   onExport: () => void;
   onReset: () => void;

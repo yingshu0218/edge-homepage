@@ -6,7 +6,7 @@ type Props = {
   snapshot: AppSnapshot;
   groupId: string;
   limit?: number;
-  onViewAll?: () => void;
+  onViewAll?: (trigger: HTMLButtonElement) => void;
   onEdit?: (bookmark: Bookmark) => void;
   onDelete?: (bookmark: Bookmark) => void;
 };
@@ -17,7 +17,7 @@ export function BookmarkGrid({ snapshot, groupId, limit, onViewAll, onEdit, onDe
     <section aria-label="Bookmarks">
       {visible.map((bookmark) => <BookmarkCard key={bookmark.id} bookmark={bookmark} onEdit={onEdit} onDelete={onDelete} />)}
       {bookmarks.length > visible.length && (
-        <button type="button" className="view-all-bookmarks" onClick={onViewAll}>
+        <button type="button" className="view-all-bookmarks" onClick={(event) => onViewAll?.(event.currentTarget)}>
           查看全部（共 {bookmarks.length} 个）
         </button>
       )}

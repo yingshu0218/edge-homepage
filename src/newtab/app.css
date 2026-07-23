@@ -24,6 +24,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .local-data-label, .summary-button, .icon-button { min-height: 34px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: inherit; backdrop-filter: blur(18px); }
 .local-data-label { display: inline-flex; align-items: center; border-radius: 999px; padding: 0 11px; font-size: 11px; white-space: nowrap; }
 .summary-button { max-width: 160px; overflow: hidden; border-radius: 999px; padding: 0 11px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.weather-summary { display: inline-flex; align-items: center; gap: 5px; }.weather-summary-icon { flex: none; }.weather-summary-temperature { flex: none; font-variant-numeric: tabular-nums; }.weather-summary-location { overflow: hidden; text-overflow: ellipsis; }
 .icon-button { width: 34px; border-radius: 50%; cursor: pointer; }
 .workspace { width: min(1040px, 100%); margin: clamp(58px, 9vh, 110px) auto 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(240px, .75fr); gap: 28px; align-items: start; }
 .command-area h1 { margin: 0; font-size: clamp(40px, 5vw, 64px); line-height: 1.05; letter-spacing: -.05em; font-weight: 650; }
@@ -159,7 +160,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .mood-card dl { grid-row: 2 / span 2; }
 }
 @media (max-width: 760px) {
-  .app-shell { padding: 20px 18px 38px; overflow: visible; }.local-data-label { display: none; }.workspace { margin-top: 44px; }
+  .app-shell { padding: 20px 18px 38px; overflow: visible; }.local-data-label { display: none; }.weather-summary-location { display: none; }.workspace { margin-top: 44px; }
   .mood-card { display: block; }
   .command-area h1 { font-size: 42px; } .bookmark-collection { grid-template-columns: repeat(2,minmax(0,1fr)); }.date-line { margin-bottom: 20px; }
 }
