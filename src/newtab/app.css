@@ -87,6 +87,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .theme-card-caption { display: flex !important; align-items: center; gap: 7px; }.theme-card-caption b { font-style: normal; }.theme-card-caption i { width: 9px; height: 9px; margin-left: auto; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.35); }.theme-card-caption em { color: var(--theme-accent-color); font-size: 9px; font-style: normal; }
 .theme-controls { margin-top: 22px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,.1); }.theme-controls label { grid-template-columns: 1fr auto; align-items: center; }.theme-controls select,.theme-controls input { grid-column: 1 / -1; }.theme-controls output { color: white; }.custom-background-status { margin: 22px 0 8px; color: rgba(255,255,255,.6); font-size: 11px; }
 .drawer fieldset { margin: 20px 0; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; }.drawer fieldset label { display: flex; }
+.drawer .import-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; }
+.drawer .import-mode-options legend { padding: 0 6px; color: rgba(255,255,255,.72); font-size: 12px; }
+.drawer .import-mode-options label { min-width: 0; min-height: 44px; align-items: center; gap: 9px; margin: 0; padding: 0 12px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(255,255,255,.045); color: rgba(255,255,255,.68); cursor: pointer; }
+.drawer .import-mode-options label:has(input:checked) { border-color: color-mix(in srgb, var(--theme-accent-color) 68%, transparent); background: color-mix(in srgb, var(--theme-accent-color) 12%, transparent); color: white; }
+.drawer .import-mode-options input[type="radio"] { width: 16px; min-width: 16px; height: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: var(--theme-accent-color); }
+.drawer .import-mode-options span { min-width: 0; line-height: 1.35; white-space: nowrap; }
 .drawer section > button { margin: 12px 8px 0 0; border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 10px 13px; background: rgba(255,255,255,.08); color: white; cursor: pointer; }
 .bookmark-sort-panel > p:first-child { margin: 0; color: rgba(255,255,255,.48); font-size: 11px; }
 .bookmark-sort-panel > h3 { margin: 6px 0 20px; font-size: 20px; }

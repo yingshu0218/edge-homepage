@@ -96,10 +96,16 @@ export function SettingsPanel({ snapshot, onSearchTemplateChange, onSettingsChan
           <option value={8}>8</option><option value={12}>12</option><option value={16}>16</option>
         </select>
       </label>
-      <fieldset>
+      <fieldset className="import-mode-options">
         <legend>导入方式</legend>
-        <label><input type="radio" name="import-mode" checked={mode === 'replace'} onChange={() => setMode('replace')} />替换现有数据</label>
-        <label><input type="radio" name="import-mode" checked={mode === 'merge'} onChange={() => setMode('merge')} />合并数据</label>
+        <label>
+          <input type="radio" name="import-mode" checked={mode === 'replace'} onChange={() => setMode('replace')} />
+          <span>替换现有数据</span>
+        </label>
+        <label>
+          <input type="radio" name="import-mode" checked={mode === 'merge'} onChange={() => setMode('merge')} />
+          <span>合并数据</span>
+        </label>
       </fieldset>
       <label htmlFor={importId}>导入备份</label>
       <input id={importId} type="file" accept="application/json,.json" onChange={importFile} />
