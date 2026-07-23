@@ -35,7 +35,7 @@ npm run build
 | `https://geocoding-api.open-meteo.com/*` | 用户输入城市名称时查找城市。 |
 | `https://api.open-meteo.com/*` | 为已选择的城市获取天气预报，或在用户手动刷新时更新。 |
 
-Day Start 不请求书签、标签页或账户访问权限，也不使用浏览器配置文件的云端存储。天气以外的功能不需要外部网络服务。
+Open-Meteo 是清单中唯一声明的 API 主机权限。Day Start 不请求书签、标签页或账户访问权限，也不使用浏览器配置文件的云端存储。书签卡片还可能访问书签原始来源的 `/favicon.ico`（例如 `https://<bookmark-origin>/favicon.ico`）来显示图标；请求失败时在本地回退为首字母图标。
 
 ## 4. 单设备功能验收
 
