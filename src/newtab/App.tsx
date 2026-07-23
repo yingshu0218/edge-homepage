@@ -4,43 +4,56 @@ import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot, Bookmark } from '../domain/models';
 import { BookmarkDialog, type BookmarkDialogValue } from '../features/bookmarks/BookmarkDialog';
 import { BookmarkGrid } from '../features/bookmarks/BookmarkGrid';
+import { BookmarkManagerDrawer } from '../features/bookmarks/BookmarkManagerDrawer';
 import { BookmarkSortDrawer } from '../features/bookmarks/BookmarkSortDrawer';
-import { GroupTabs } from '../features/bookmarks/GroupTabs';
 import { GroupManager } from '../features/bookmarks/GroupManager';
-import { addBookmark, addGroup, deleteBookmark, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, reorderGroups } from '../features/bookmarks/bookmarkActions';
+import { GroupTabs } from '../features/bookmarks/GroupTabs';
+import { addBookmark, addGroup, deleteBookmark, deleteBookmarks, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, moveBookmarks, reorderGroups } from '../features/bookmarks/bookmarkActions';
 import { SearchBox } from '../features/search/SearchBox';
 import { SettingsPanel, type ImportMode } from '../features/settings/SettingsPanel';
 import { ThemePicker } from '../features/themes/ThemePicker';
 import { applyResolvedTheme, resolveTheme } from '../features/themes/themeResolver';
+import { TimeDrawer } from '../features/time/TimeDrawer';
+import { formatClock } from '../features/time/timeFormat';
+import { useLocalClock } from '../features/time/useLocalClock';
+import { WeatherDrawer } from '../features/weather/WeatherDrawer';
+import { useWeather } from '../features/weather/useWeather';
+import type { WeatherClient } from '../features/weather/types';
 import { exportSnapshot, parseSnapshot } from '../storage/transfer';
-import type { SnapshotStorage } from '../storage/types';
-import { SyncStatus } from '../sync/SyncStatus';
-import { mergeSnapshots } from '../sync/edgeSyncProvider';
-import type { SyncProvider, SyncState } from '../sync/types';
+import type { SnapshotStorage, WeatherCacheStore } from '../storage/types';
 import './app.css';
 
-type Coordinator = { saveAndSync(snapshot: AppSnapshot): Promise<SyncState> };
 type Backgrounds = { get(): Promise<Blob | undefined>; put(blob: Blob): Promise<void>; clear(): Promise<void> };
 
 export type AppServices = {
   repository: SnapshotStorage;
-  coordinator: Coordinator;
-  sync: Pick<SyncProvider, 'pull' | 'subscribe'>;
   backgrounds: Backgrounds;
+  weather: WeatherClient;
+  weatherCache: WeatherCacheStore;
+  geolocation?: Pick<Geolocation, 'getCurrentPosition'>;
   navigate(destination: string): void;
   download(blob: Blob, filename: string): void;
   now?: () => number;
   createId?: () => string;
 };
 
-type Drawer = 'theme' | 'settings' | 'sort' | 'groups' | null;
+type Drawer = 'theme' | 'settings' | 'sort' | 'groups' | 'bookmarks' | 'time' | 'weather' | null;
 const focusableSelector = 'input:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
-
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
-const timeFormatter = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+function drawerLabel(drawer: Exclude<Drawer, null>): string {
+  return ({ theme: '主题设置', settings: '应用设置', sort: '书签排序', groups: '分组管理', bookmarks: '书签管理', time: '时间设置', weather: '天气' })[drawer];
+}
 
 function mergeImported(current: AppSnapshot, incoming: AppSnapshot): AppSnapshot {
-  return mergeSnapshots(current, incoming, Number.MAX_SAFE_INTEGER);
+  const groupIds = new Set(current.groups.map(({ id }) => id));
+  const bookmarkIds = new Set(current.bookmarks.map(({ id }) => id));
+  return {
+    ...current,
+    groups: [...current.groups, ...incoming.groups.filter(({ id }) => !groupIds.has(id))],
+    bookmarks: [...current.bookmarks, ...incoming.bookmarks.filter(({ id }) => !bookmarkIds.has(id))],
+    settings: { ...current.settings, ...incoming.settings, updatedAt: incoming.settings.updatedAt },
+  };
 }
 
 export function App({ services }: { services: AppServices }) {
@@ -48,8 +61,8 @@ export function App({ services }: { services: AppServices }) {
   const createId = services.createId ?? (() => crypto.randomUUID());
   const [snapshot, setSnapshot] = useState<AppSnapshot>();
   const [customBackground, setCustomBackground] = useState<Blob>();
-  const [syncState, setSyncState] = useState<SyncState>({ kind: 'local' });
   const [error, setError] = useState<string>();
+  const [saveError, setSaveError] = useState<string>();
   const [backgroundFallback, setBackgroundFallback] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -60,67 +73,31 @@ export function App({ services }: { services: AppServices }) {
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const sortButtonRef = useRef<HTMLButtonElement>(null);
   const groupsButtonRef = useRef<HTMLButtonElement>(null);
+  const bookmarksButtonRef = useRef<HTMLButtonElement>(null);
+  const timeButtonRef = useRef<HTMLButtonElement>(null);
+  const weatherButtonRef = useRef<HTMLButtonElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
-  const snapshotRef = useRef<AppSnapshot | undefined>(undefined);
 
   const acceptSnapshot = useCallback((next: AppSnapshot) => {
-    snapshotRef.current = next;
     setSnapshot(next);
     setActiveGroupId((current) => next.groups.some((group) => group.id === current && !group.deletedAt)
-      ? current
-      : (next.groups.find((group) => !group.deletedAt)?.id ?? ''));
+      ? current : (next.groups.find((group) => !group.deletedAt)?.id ?? ''));
   }, []);
 
   useEffect(() => {
     let active = true;
-    const remote = services.sync.pull().catch((cause) => {
-      if (active) setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: true });
-      return null;
-    });
-    Promise.all([services.repository.load(), services.backgrounds.get(), remote])
-      .then(async ([local, background, remote]) => {
+    Promise.all([services.repository.load(), services.backgrounds.get()])
+      .then(([local, background]) => {
         if (!active) return;
-        const hydrated = remote ? mergeSnapshots(local, remote) : local;
-        acceptSnapshot(hydrated);
+        acceptSnapshot(local);
         setCustomBackground(background);
-        setBackgroundFallback(hydrated.settings.useCustomBackground && !background);
-        if (remote) {
-          try {
-            await services.repository.save(hydrated);
-          } catch (cause) {
-            if (active) setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: false });
-          }
-        }
+        setBackgroundFallback(local.settings.useCustomBackground && !background);
       })
       .catch((cause) => active && setError(cause instanceof Error ? cause.message : String(cause)));
     return () => { active = false; };
-  }, [acceptSnapshot, services]);
-
-  useEffect(() => {
-    let active = true;
-    let generation = 0;
-    let queue = Promise.resolve();
-    const unsubscribe = services.sync.subscribe(() => {
-      const requested = ++generation;
-      queue = queue.then(async () => {
-        if (!active || requested !== generation) return;
-        try {
-          const remote = await services.sync.pull();
-          if (!active || requested !== generation || !remote) return;
-          const local = snapshotRef.current;
-          const merged = local ? mergeSnapshots(local, remote) : remote;
-          await services.repository.save(merged);
-          if (!active || requested !== generation) return;
-          acceptSnapshot(merged);
-        } catch (cause) {
-          if (active && requested === generation) setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: true });
-        }
-      });
-    });
-    return () => { active = false; generation += 1; unsubscribe(); };
-  }, [acceptSnapshot, services]);
+  }, [acceptSnapshot, services.backgrounds, services.repository]);
 
   useEffect(() => {
     if (!snapshot) return;
@@ -133,181 +110,88 @@ export function App({ services }: { services: AppServices }) {
   useEffect(() => {
     if (!drawer) return;
     drawerCloseRef.current?.focus();
-    return () => {
-      drawerTriggerRef.current?.focus();
-    };
+    return () => drawerTriggerRef.current?.focus();
   }, [drawer]);
+
+  const currentTime = useLocalClock(snapshot?.settings.clockShowSeconds ?? false, now);
+  const weather = useWeather({ location: snapshot?.settings.weatherLocation, client: services.weather, cache: services.weatherCache, now });
+  const persist = useCallback(async (next: AppSnapshot) => {
+    acceptSnapshot(next);
+    setSaveError(undefined);
+    try { await services.repository.save(next); }
+    catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); }
+  }, [acceptSnapshot, services.repository]);
+  const updateSettings = useCallback((changes: Partial<AppSnapshot['settings']>) => {
+    if (snapshot) void persist({ ...snapshot, settings: { ...snapshot.settings, ...changes, updatedAt: now() } });
+  }, [now, persist, snapshot]);
 
   const openDrawer = (next: Exclude<Drawer, null>, trigger: HTMLButtonElement | null) => {
     drawerTriggerRef.current = trigger;
     setDrawer(next);
   };
-
   const handleDrawerKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      setDrawer(null);
-      return;
-    }
+    if (event.key === 'Escape') { event.preventDefault(); setDrawer(null); return; }
     if (event.key !== 'Tab') return;
     const focusable = Array.from(drawerRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
-    const first = focusable[0];
-    const last = focusable.at(-1);
+    const first = focusable[0]; const last = focusable.at(-1);
     if (!first || !last) return;
-    if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    } else if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
   };
-
-  const persist = useCallback(async (next: AppSnapshot) => {
-    acceptSnapshot(next);
-    setSyncState({ kind: 'pending' });
-    try {
-      setSyncState(await services.coordinator.saveAndSync(next));
-    } catch (cause) {
-      setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: false });
-    }
-  }, [acceptSnapshot, services.coordinator]);
-
-  const updateSettings = useCallback((changes: Partial<AppSnapshot['settings']>) => {
-    if (!snapshot) return;
-    void persist({ ...snapshot, settings: { ...snapshot.settings, ...changes, updatedAt: now() } });
-  }, [now, persist, snapshot]);
 
   const bookmarkCount = useMemo(() => snapshot?.bookmarks.filter((bookmark) => !bookmark.deletedAt).length ?? 0, [snapshot]);
-
-  if (error) {
-    return <main className="state-shell"><section role="alert"><strong>启动页暂时无法加载</strong><p>{error}</p><button type="button" onClick={() => window.location.reload()}>重新加载</button></section></main>;
-  }
+  if (error) return <main className="state-shell"><section role="alert"><strong>启动页暂时无法加载</strong><p>{error}</p><button type="button" onClick={() => window.location.reload()}>重新加载</button></section></main>;
   if (!snapshot) return <main className="state-shell"><p role="status">正在准备启动页…</p></main>;
 
-  const date = new Date(now());
   const activeGroup = activeGroupId || snapshot.groups.find((group) => !group.deletedAt)?.id || '';
-
   const saveBookmark = (value: BookmarkDialogValue) => {
-    const next = editing
-      ? editBookmark(snapshot, editing.id, value, now())
-      : addBookmark(snapshot, { ...value, id: createId(), now: now() });
-    setDialogOpen(false);
-    setEditing(undefined);
-    void persist(next);
+    const next = editing ? editBookmark(snapshot, editing.id, value, now()) : addBookmark(snapshot, { ...value, id: createId(), now: now() });
+    setDialogOpen(false); setEditing(undefined); void persist(next);
   };
-
   const importData = async (text: string, mode: ImportMode) => {
     const imported = parseSnapshot(text);
     if (mode === 'replace') {
-      await services.backgrounds.clear();
-      setCustomBackground(undefined);
+      await services.backgrounds.clear(); setCustomBackground(undefined);
       await persist({ ...imported, settings: { ...imported.settings, useCustomBackground: false, updatedAt: now() } });
-      return;
-    }
-    await persist(mergeImported(snapshot, imported));
+    } else await persist(mergeImported(snapshot, imported));
   };
-
   const reset = async () => {
-    try {
-      await services.backgrounds.clear();
-      setCustomBackground(undefined);
-      await persist(createDefaultSnapshot());
-    } catch (cause) {
-      setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: false });
-    }
+    try { await services.backgrounds.clear(); setCustomBackground(undefined); await persist(createDefaultSnapshot()); }
+    catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); }
   };
+  const weatherSummary = weather.state.kind === 'ready' ? `${weather.state.forecast.location.name} · ${Math.round(weather.state.forecast.current.temperature)}℃` : '设置天气';
 
-  const syncFact = syncState.kind === 'synced'
-    ? { label: 'Microsoft 已同步', symbol: '✓', detail: '已同步', success: true }
-    : syncState.kind === 'warning'
-      ? { label: 'Microsoft 同步警告', symbol: '!', detail: '容量警告', success: false }
-      : syncState.kind === 'error'
-        ? { label: 'Microsoft 同步异常', symbol: '×', detail: '同步异常', success: false }
-        : syncState.kind === 'pending'
-          ? { label: 'Microsoft 正在同步', symbol: '…', detail: '正在同步', success: false }
-          : { label: 'Microsoft 仅本地', symbol: '•', detail: '仅本地', success: false };
-
-  return (
-    <main className="app-shell">
-      <div className="backdrop" aria-hidden="true" />
-      <header className="topbar">
-        <a className="brand" href="index.html" aria-label="Day Start 首页">DAY<span>/</span>START</a>
-        <nav className="top-actions" aria-label="启动页操作">
-          <div className={`sync-chip sync-${syncState.kind}`}><span aria-hidden="true" />Microsoft · <SyncStatus state={syncState} /></div>
-          <button ref={themeButtonRef} className="icon-button" type="button" aria-label="主题" onClick={() => openDrawer('theme', themeButtonRef.current)}>◐</button>
-          <button ref={settingsButtonRef} className="icon-button" type="button" aria-label="设置" onClick={() => openDrawer('settings', settingsButtonRef.current)}>⚙</button>
-        </nav>
-      </header>
-
-      <div className="workspace">
-        <section className="command-area">
-          <h1>今天去哪里？</h1>
-          <p className="date-line">{dateFormatter.format(date)} · {timeFormatter.format(date)}</p>
-          <SearchBox searchTemplate={snapshot.settings.searchTemplate} navigate={services.navigate} placeholder="搜索书签、输入网址或执行命令" />
-
-          <div className="section-heading">
-            <strong>置顶</strong>
-            <div><button ref={sortButtonRef} type="button" className="sort-manager-button" onClick={() => openDrawer('sort', sortButtonRef.current)}>管理排序</button><button ref={addButtonRef} type="button" aria-label="添加书签" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>＋ 添加</button></div>
-          </div>
-          <div className="bookmark-collection">
-            <BookmarkGrid
-              snapshot={snapshot}
-              groupId={activeGroup}
-              onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }}
-              onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }}
-            />
-            <button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button>
-          </div>
-          <div className="group-rail">
-            <GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} />
-            <button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button>
-          </div>
-        </section>
-
-        <aside className="mood-card">
-          <p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote>
-          <hr />
-          <p>快速状态</p>
-          <dl><div><dt>Microsoft</dt><dd aria-label={syncFact.label} className={syncFact.success ? 'success' : undefined}>{syncFact.symbol}</dd></div><div><dt>同步状态</dt><dd>{syncFact.detail}</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>
-          {backgroundFallback && <p role="status" aria-label="背景回退提示">自定义背景仅保存在原设备，已回退到内置主题。</p>}
-          {syncState.kind === 'error' && syncState.message.includes('Corrupted Edge sync data') && <button type="button" onClick={() => void persist(snapshot)}>重置同步数据</button>}
-        </aside>
-      </div>
-
-      <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
-
-      {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}>
-        <aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawer === 'theme' ? '主题设置' : drawer === 'sort' ? '书签排序' : drawer === 'groups' ? '分组管理' : '应用设置'} onKeyDown={handleDrawerKeyDown}>
-          <header><h2>{drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : drawer === 'groups' ? '分组管理' : '设置'}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawer === 'theme' ? '主题' : drawer === 'sort' ? '书签排序' : drawer === 'groups' ? '分组管理' : '设置'}`} onClick={() => setDrawer(null)}>×</button></header>
-          {drawer === 'theme' ? <ThemePicker
-            selectedThemeId={snapshot.settings.themeId}
-            useCustomBackground={snapshot.settings.useCustomBackground}
-            appearance={snapshot.settings.appearance}
-            overlay={snapshot.settings.overlay}
-            blur={snapshot.settings.blur}
-            backgroundStore={services.backgrounds}
-            onThemeChange={(themeId, recommended) => updateSettings({ themeId, useCustomBackground: false, ...recommended })}
-            onAppearanceChange={(changes) => updateSettings(changes)}
-            onCustomBackgroundChange={(enabled) => {
-              updateSettings({ useCustomBackground: enabled });
-              if (enabled) void services.backgrounds.get().then((background) => { setCustomBackground(background); setBackgroundFallback(!background); });
-            }}
-          /> : drawer === 'sort' ? <BookmarkSortDrawer snapshot={snapshot} groupId={activeGroup} onChange={(next) => void persist(next)} now={now} /> : drawer === 'groups' ? <GroupManager snapshot={snapshot}
-            onCreate={(name) => void persist(addGroup(snapshot, { id: createId(), name }, now()))}
-            onRename={(id, name) => void persist(editGroup(snapshot, id, name, now()))}
-            onReorder={(activeId, overId) => void persist(reorderGroups(snapshot, activeId, overId, now()))}
-            onDelete={(id, mode, destinationId) => { if (mode === 'delete') void persist(deleteGroupAndBookmarks(snapshot, id, now())); else if (destinationId) void persist(deleteGroup(snapshot, id, destinationId, now())); }}
-          /> : <SettingsPanel
-            snapshot={snapshot}
-            syncState={syncState}
-            onSearchTemplateChange={(searchTemplate) => updateSettings({ searchTemplate })}
-            onImport={importData}
-            onExport={() => services.download(exportSnapshot(snapshot), `day-start-${new Date(now()).toISOString().slice(0, 10)}.json`)}
-            onReset={() => void reset()}
-          />}
-        </aside>
-      </div>}
-    </main>
-  );
+  return <main className="app-shell">
+    <div className="backdrop" aria-hidden="true" />
+    <header className="topbar">
+      <a className="brand" href="index.html" aria-label="Day Start 首页">DAY<span>/</span>START</a>
+      <nav className="top-actions" aria-label="启动页操作">
+        <span className="local-data-label">数据保存在本机</span>
+        <button ref={timeButtonRef} className="summary-button" type="button" aria-label={`时间 ${formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}`} onClick={() => openDrawer('time', timeButtonRef.current)}>{formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: false })}</button>
+        <button ref={weatherButtonRef} className="summary-button" type="button" aria-label={`天气 ${weatherSummary}`} onClick={() => openDrawer('weather', weatherButtonRef.current)}>{weatherSummary}</button>
+        <button ref={themeButtonRef} className="icon-button" type="button" aria-label="主题" onClick={() => openDrawer('theme', themeButtonRef.current)}>◐</button>
+        <button ref={settingsButtonRef} className="icon-button" type="button" aria-label="设置" onClick={() => openDrawer('settings', settingsButtonRef.current)}>⚙</button>
+      </nav>
+    </header>
+    <div className="workspace">
+      <section className="command-area">
+        <h1>今天去哪里？</h1><p className="date-line">{dateFormatter.format(currentTime)} · {formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}</p>
+        <SearchBox searchTemplate={snapshot.settings.searchTemplate} navigate={services.navigate} placeholder="搜索书签、输入网址或执行命令" />
+        <div className="section-heading"><strong>置顶</strong><div><button ref={bookmarksButtonRef} type="button" className="sort-manager-button" aria-label="管理书签" onClick={() => openDrawer('bookmarks', bookmarksButtonRef.current)}>管理书签</button><button ref={sortButtonRef} type="button" className="sort-manager-button" onClick={() => openDrawer('sort', sortButtonRef.current)}>管理排序</button><button ref={addButtonRef} type="button" aria-label="添加书签" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>＋ 添加</button></div></div>
+        <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} onViewAll={() => openDrawer('bookmarks', bookmarksButtonRef.current)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
+        <div className="group-rail"><GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} /><button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button></div>
+      </section>
+      <aside className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{backgroundFallback && <p role="status" aria-label="背景回退提示">自定义背景仅保存在原设备，已回退到内置主题。</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</aside>
+    </div>
+    <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
+    {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawerLabel(drawer)} onKeyDown={handleDrawerKeyDown}><header><h2>{drawerLabel(drawer)}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawerLabel(drawer)}`} onClick={() => setDrawer(null)}>×</button></header>
+      {drawer === 'theme' ? <ThemePicker selectedThemeId={snapshot.settings.themeId} useCustomBackground={snapshot.settings.useCustomBackground} appearance={snapshot.settings.appearance} overlay={snapshot.settings.overlay} blur={snapshot.settings.blur} backgroundStore={services.backgrounds} onThemeChange={(themeId, recommended) => updateSettings({ themeId, useCustomBackground: false, ...recommended })} onAppearanceChange={updateSettings} onCustomBackgroundChange={(enabled) => { updateSettings({ useCustomBackground: enabled }); if (enabled) void services.backgrounds.get().then((background) => { setCustomBackground(background); setBackgroundFallback(!background); }); }} /> : null}
+      {drawer === 'sort' ? <BookmarkSortDrawer snapshot={snapshot} groupId={activeGroup} onChange={(next) => void persist(next)} now={now} /> : null}
+      {drawer === 'groups' ? <GroupManager snapshot={snapshot} onCreate={(name) => void persist(addGroup(snapshot, { id: createId(), name }, now()))} onRename={(id, name) => void persist(editGroup(snapshot, id, name, now()))} onReorder={(activeId, overId) => void persist(reorderGroups(snapshot, activeId, overId, now()))} onDelete={(id, mode, destinationId) => { if (mode === 'delete') void persist(deleteGroupAndBookmarks(snapshot, id, now())); else if (destinationId) void persist(deleteGroup(snapshot, id, destinationId, now())); }} /> : null}
+      {drawer === 'bookmarks' ? <BookmarkManagerDrawer snapshot={snapshot} groupId={activeGroup} onEdit={(bookmark) => { setDrawer(null); setEditing(bookmark); setDialogOpen(true); }} onDelete={(ids) => void persist(deleteBookmarks(snapshot, ids, now()))} onMove={(ids, destination) => void persist(moveBookmarks(snapshot, ids, destination, now()))} onOpenSort={() => setDrawer('sort')} /> : null}
+      {drawer === 'time' ? <TimeDrawer currentTime={currentTime} clockHour12={snapshot.settings.clockHour12} clockShowSeconds={snapshot.settings.clockShowSeconds} clockShowFullDate={snapshot.settings.clockShowFullDate} onChange={updateSettings} /> : null}
+      {drawer === 'weather' ? <WeatherDrawer state={weather.state} client={services.weather} location={snapshot.settings.weatherLocation} selectedLocation={snapshot.settings.weatherLocation} unit={snapshot.settings.temperatureUnit} onLocationChange={(location) => updateSettings({ weatherLocation: location })} onUnitChange={(temperatureUnit) => updateSettings({ temperatureUnit })} onRefresh={() => weather.refresh({ force: true })} geolocation={services.geolocation} /> : null}
+      {drawer === 'settings' ? <SettingsPanel snapshot={snapshot} onSearchTemplateChange={(searchTemplate) => updateSettings({ searchTemplate })} onSettingsChange={updateSettings} onImport={importData} onExport={() => services.download(exportSnapshot(snapshot), `day-start-${new Date(now()).toISOString().slice(0, 10)}.json`)} onReset={() => void reset()} /> : null}
+    </aside></div>}
+  </main>;
 }

@@ -14,8 +14,8 @@ describe('SettingsPanel', () => {
     render(
       <SettingsPanel
         snapshot={createDefaultSnapshot()}
-        syncState={{ kind: 'local' }}
         onSearchTemplateChange={onSearchTemplateChange}
+        onSettingsChange={vi.fn()}
         onThemeParametersChange={onThemeParametersChange}
         onImport={vi.fn()}
         onExport={vi.fn()}
@@ -41,7 +41,7 @@ describe('SettingsPanel', () => {
     const onSearchTemplateChange = vi.fn();
     const snapshot = createDefaultSnapshot();
     snapshot.settings.searchTemplate = 'https://private.example/?q=%s';
-    render(<SettingsPanel snapshot={snapshot} syncState={{ kind: 'local' }} onSearchTemplateChange={onSearchTemplateChange} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
+    render(<SettingsPanel snapshot={snapshot} onSearchTemplateChange={onSearchTemplateChange} onSettingsChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
     expect(screen.getByRole('combobox', { name: '搜索引擎' })).toHaveValue('custom');
     const input = screen.getByLabelText('自定义搜索地址');
 
@@ -62,7 +62,7 @@ describe('SettingsPanel', () => {
   });
 
   it('reveals a custom template field only after choosing custom', () => {
-    render(<SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
+    render(<SettingsPanel snapshot={createDefaultSnapshot()} onSearchTemplateChange={vi.fn()} onSettingsChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
     expect(screen.queryByLabelText('自定义搜索地址')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: '搜索引擎' }), { target: { value: 'custom' } });
     expect(screen.getByLabelText('自定义搜索地址')).toHaveValue('https://www.google.com/search?q=%s');
@@ -72,12 +72,12 @@ describe('SettingsPanel', () => {
     const onThemeParametersChange = vi.fn();
     const snapshot = createDefaultSnapshot();
     const { rerender } = render(
-      <SettingsPanel snapshot={snapshot} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={onThemeParametersChange} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />,
+      <SettingsPanel snapshot={snapshot} onSearchTemplateChange={vi.fn()} onSettingsChange={vi.fn()} onThemeParametersChange={onThemeParametersChange} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />,
     );
 
     const imported = { ...snapshot, settings: { ...snapshot.settings, overlay: 0.7, blur: 12 } };
     rerender(
-      <SettingsPanel snapshot={imported} syncState={{ kind: 'synced', at: 1 }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={onThemeParametersChange} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />,
+      <SettingsPanel snapshot={imported} onSearchTemplateChange={vi.fn()} onSettingsChange={vi.fn()} onThemeParametersChange={onThemeParametersChange} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />,
     );
     expect(screen.queryByLabelText('遮罩强度')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('模糊强度')).not.toBeInTheDocument();
@@ -87,7 +87,7 @@ describe('SettingsPanel', () => {
   it('imports a chosen file using replace or merge mode', async () => {
     const onImport = vi.fn().mockResolvedValue(undefined);
     render(
-      <SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={onImport} onExport={vi.fn()} onReset={vi.fn()} />,
+      <SettingsPanel snapshot={createDefaultSnapshot()} onSearchTemplateChange={vi.fn()} onSettingsChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={onImport} onExport={vi.fn()} onReset={vi.fn()} />,
     );
 
     fireEvent.click(screen.getByLabelText('合并数据'));
@@ -103,7 +103,7 @@ describe('SettingsPanel', () => {
 
   it('cancels an import preview without writing', async () => {
     const onImport = vi.fn();
-    render(<SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={onImport} onExport={vi.fn()} onReset={vi.fn()} />);
+    render(<SettingsPanel snapshot={createDefaultSnapshot()} onSearchTemplateChange={vi.fn()} onSettingsChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={onImport} onExport={vi.fn()} onReset={vi.fn()} />);
     const text = await exportSnapshot(createDefaultSnapshot()).text();
     fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([text], 'backup.json')] } });
     await screen.findByRole('region', { name: '确认导入' });
@@ -115,7 +115,7 @@ describe('SettingsPanel', () => {
     const onReset = vi.fn();
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
     render(
-      <SettingsPanel snapshot={createDefaultSnapshot()} syncState={{ kind: 'local' }} onSearchTemplateChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={onReset} />,
+      <SettingsPanel snapshot={createDefaultSnapshot()} onSearchTemplateChange={vi.fn()} onSettingsChange={vi.fn()} onThemeParametersChange={vi.fn()} onImport={vi.fn()} onExport={vi.fn()} onReset={onReset} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: '重置全部数据' }));
@@ -123,5 +123,14 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '重置全部数据' }));
     expect(onReset).toHaveBeenCalledOnce();
     expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it('changes the local bookmark display limit', () => {
+    const onSettingsChange = vi.fn();
+    render(<SettingsPanel snapshot={createDefaultSnapshot()} onSearchTemplateChange={vi.fn()} onSettingsChange={onSettingsChange} onImport={vi.fn()} onExport={vi.fn()} onReset={vi.fn()} />);
+
+    expect(screen.getByRole('combobox', { name: '每组显示书签' })).toHaveValue('8');
+    fireEvent.change(screen.getByRole('combobox', { name: '每组显示书签' }), { target: { value: '12' } });
+    expect(onSettingsChange).toHaveBeenCalledWith({ bookmarkDisplayLimit: 12 });
   });
 });

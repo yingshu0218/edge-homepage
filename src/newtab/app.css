@@ -9,7 +9,7 @@ html, body, #root { width: 100%; min-width: 320px; min-height: 100%; margin: 0; 
 body { overflow-x: hidden; }
 [data-appearance="light"] { color: #182333; background: #e7edf4; }
 [data-appearance="light"] .app-shell::before { background: rgba(244,248,252,var(--theme-overlay,.38)); }
-[data-appearance="light"] .sync-chip,[data-appearance="light"] .icon-button,[data-appearance="light"] [data-bookmark-id],[data-appearance="light"] .mood-card { border-color: rgba(21,38,58,.16); background: rgba(255,255,255,.52); color: #182333; }
+[data-appearance="light"] .local-data-label,[data-appearance="light"] .summary-button,[data-appearance="light"] .icon-button,[data-appearance="light"] [data-bookmark-id],[data-appearance="light"] .mood-card { border-color: rgba(21,38,58,.16); background: rgba(255,255,255,.52); color: #182333; }
 [data-appearance="light"] [data-bookmark-id] small,[data-appearance="light"] .date-line,[data-appearance="light"] .section-heading > div,[data-appearance="light"] .group-rail button { color: rgba(24,35,51,.62); }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -21,11 +21,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brand { color: inherit; text-decoration: none; font-size: 13px; font-weight: 800; letter-spacing: .16em; }
 .brand span { color: var(--theme-accent-color); }
 .top-actions { display: flex; align-items: center; gap: 9px; }
-.sync-chip, .icon-button { min-height: 34px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: inherit; backdrop-filter: blur(18px); }
-.sync-chip { display: flex; align-items: center; gap: 6px; border-radius: 999px; padding: 0 12px; font-size: 11px; }
-.sync-chip > span { width: 6px; height: 6px; border-radius: 50%; background: #78efbd; box-shadow: 0 0 10px #78efbd; }
-.sync-chip:not(.sync-synced) > span { background: #d7b36a; box-shadow: none; }.sync-chip.sync-error > span { background: #e78383; }
-.sync-chip p { margin: 0; display: inline; }
+.local-data-label, .summary-button, .icon-button { min-height: 34px; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.1); color: inherit; backdrop-filter: blur(18px); }
+.local-data-label { display: inline-flex; align-items: center; border-radius: 999px; padding: 0 11px; font-size: 11px; white-space: nowrap; }
+.summary-button { max-width: 160px; overflow: hidden; border-radius: 999px; padding: 0 11px; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .icon-button { width: 34px; border-radius: 50%; cursor: pointer; }
 .workspace { width: min(1040px, 100%); margin: clamp(58px, 9vh, 110px) auto 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(240px, .75fr); gap: 28px; align-items: start; }
 .command-area h1 { margin: 0; font-size: clamp(40px, 5vw, 64px); line-height: 1.05; letter-spacing: -.05em; font-weight: 650; }
@@ -161,7 +159,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .mood-card dl { grid-row: 2 / span 2; }
 }
 @media (max-width: 760px) {
-  .app-shell { padding: 20px 18px 38px; overflow: visible; }.sync-chip { display: none; }.workspace { margin-top: 44px; }
+  .app-shell { padding: 20px 18px 38px; overflow: visible; }.local-data-label { display: none; }.workspace { margin-top: 44px; }
   .mood-card { display: block; }
   .command-area h1 { font-size: 42px; } .bookmark-collection { grid-template-columns: repeat(2,minmax(0,1fr)); }.date-line { margin-bottom: 20px; }
 }

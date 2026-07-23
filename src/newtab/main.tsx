@@ -3,8 +3,8 @@ import { createRoot } from 'react-dom/client';
 
 import { BackgroundStore } from '../storage/backgroundStore';
 import { SnapshotRepository } from '../storage/snapshotRepository';
-import { EdgeSyncProvider } from '../sync/edgeSyncProvider';
-import { SyncCoordinator } from '../sync/syncCoordinator';
+import { ChromeWeatherCache } from '../features/weather/weatherCache';
+import { createOpenMeteoClient } from '../features/weather/openMeteoClient';
 import { App, type AppServices } from './App';
 
 const localStorageAdapter = {
@@ -13,14 +13,14 @@ const localStorageAdapter = {
 };
 
 const repository = new SnapshotRepository(localStorageAdapter);
-const sync = new EdgeSyncProvider(chrome.storage.sync, chrome.storage.onChanged);
 const backgrounds = new BackgroundStore();
 
 const services: AppServices = {
   repository,
-  sync,
-  coordinator: new SyncCoordinator(repository, sync),
   backgrounds,
+  weather: createOpenMeteoClient(),
+  weatherCache: new ChromeWeatherCache(localStorageAdapter),
+  geolocation: navigator.geolocation,
   navigate(destination) {
     window.location.assign(destination);
   },

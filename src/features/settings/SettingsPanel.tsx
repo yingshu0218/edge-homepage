@@ -1,8 +1,6 @@
 import { useEffect, useId, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 
 import type { AppSnapshot } from '../../domain/models';
-import type { SyncState } from '../../sync/types';
-import { SyncStatus } from '../../sync/SyncStatus';
 import { parseSnapshot } from '../../storage/transfer';
 import { findSearchEngine, SEARCH_ENGINES } from '../search/searchEngines';
 
@@ -10,8 +8,8 @@ export type ImportMode = 'replace' | 'merge';
 
 export type SettingsPanelProps = {
   snapshot: AppSnapshot;
-  syncState: SyncState;
   onSearchTemplateChange: (searchTemplate: string) => void;
+  onSettingsChange: (changes: Partial<AppSnapshot['settings']>) => void;
   onThemeParametersChange?: (parameters: { overlay: number; blur: number }) => void;
   onImport: (text: string, mode: ImportMode) => void | Promise<void>;
   onExport: () => void;
@@ -28,7 +26,7 @@ function readFile(file: Blob): Promise<string> {
   });
 }
 
-export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onImport, onExport, onReset }: SettingsPanelProps) {
+export function SettingsPanel({ snapshot, onSearchTemplateChange, onSettingsChange, onImport, onExport, onReset }: SettingsPanelProps) {
   const importId = useId();
   const [mode, setMode] = useState<ImportMode>('replace');
   const [searchDraft, setSearchDraft] = useState(snapshot.settings.searchTemplate);
@@ -94,6 +92,11 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onI
           onChange={(event) => { setSearchDraft(event.target.value); setSearchError(undefined); }} onBlur={commitSearchTemplate} onKeyDown={searchKeyDown} />
       </label>}
       {searchError && <p id={`${importId}-search-error`} role="alert">{searchError}</p>}
+      <label>每组显示书签
+        <select value={snapshot.settings.bookmarkDisplayLimit} onChange={(event) => onSettingsChange({ bookmarkDisplayLimit: Number(event.target.value) as 8 | 12 | 16 })}>
+          <option value={8}>8</option><option value={12}>12</option><option value={16}>16</option>
+        </select>
+      </label>
       <fieldset>
         <legend>导入方式</legend>
         <label><input type="radio" name="import-mode" checked={mode === 'replace'} onChange={() => setMode('replace')} />替换现有数据</label>
@@ -110,7 +113,6 @@ export function SettingsPanel({ snapshot, syncState, onSearchTemplateChange, onI
       {error && <p role="alert">{error}</p>}
       <button type="button" onClick={onExport}>导出备份</button>
       <button type="button" onClick={() => { if (window.confirm('确定要重置全部数据吗？此操作无法撤销。')) onReset(); }}>重置全部数据</button>
-      <SyncStatus state={syncState} />
     </section>
   );
 }
