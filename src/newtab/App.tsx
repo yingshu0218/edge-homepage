@@ -178,6 +178,9 @@ export function App({ services }: { services: AppServices }) {
       return { icon: description.icon, label: description.label, temperature: `${convertTemperature(weather.state.forecast.current.temperature, snapshot.settings.temperatureUnit)}${unit}`, location: weather.state.forecast.location.name };
     })()
     : undefined;
+  const clockText = formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds });
+  const clockPrimary = snapshot.settings.clockShowSeconds ? clockText.slice(0, -3) : clockText;
+  const clockSeconds = snapshot.settings.clockShowSeconds ? clockText.slice(-3) : undefined;
 
   return <main className="app-shell">
     <div className="backdrop" aria-hidden="true" />
@@ -185,7 +188,7 @@ export function App({ services }: { services: AppServices }) {
       <a className="brand" href="index.html" aria-label="Day Start 首页">DAY<span>/</span>START</a>
       <nav className="top-actions" aria-label="启动页操作">
         <span className="local-data-label">数据保存在本机</span>
-        <button ref={timeButtonRef} className="summary-button" type="button" aria-label={`时间 ${formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}`} onClick={() => openDrawer('time', timeButtonRef.current)}>{formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}</button>
+        <button ref={timeButtonRef} className="summary-button clock-summary" type="button" aria-label={`时间 ${clockText}`} onClick={() => openDrawer('time', timeButtonRef.current)}><span className="clock-summary-primary">{clockPrimary}</span>{clockSeconds && <span className="clock-summary-seconds">{clockSeconds}</span>}</button>
         <button ref={weatherButtonRef} className="summary-button weather-summary" type="button" aria-label={weatherSummary ? `天气 ${weatherSummary.icon} ${weatherSummary.label} · ${weatherSummary.temperature} · ${weatherSummary.location}` : '天气 设置天气'} onClick={() => openDrawer('weather', weatherButtonRef.current)}>{weatherSummary ? <><span className="weather-summary-icon" aria-hidden="true">{weatherSummary.icon}</span><span className="weather-summary-temperature">{weatherSummary.temperature}</span><span className="weather-summary-location">{weatherSummary.location}</span></> : '设置天气'}</button>
         <button ref={themeButtonRef} className="icon-button" type="button" aria-label="主题" onClick={() => openDrawer('theme', themeButtonRef.current)}>◐</button>
         <button ref={settingsButtonRef} className="icon-button" type="button" aria-label="设置" onClick={() => openDrawer('settings', settingsButtonRef.current)}>⚙</button>
@@ -199,7 +202,7 @@ export function App({ services }: { services: AppServices }) {
         <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} onViewAll={(trigger) => openDrawer('bookmarks', trigger)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
         <div className="group-rail"><GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} /><button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button></div>
       </section>
-      <aside className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{(backgroundFallback || backgroundError) && <p role="status" aria-label="背景回退提示">{backgroundError ? `自定义背景读取失败：${backgroundError}，已回退到内置主题。` : '自定义背景仅保存在原设备，已回退到内置主题。'}</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</aside>
+      <aside className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{(backgroundFallback || backgroundError) && <p role="status" aria-label="背景回退提示">{backgroundError ? (snapshot.settings.useCustomBackground ? `自定义背景读取失败：${backgroundError}，已回退到内置主题。` : `本地背景读取失败：${backgroundError}，启动页仍可使用。`) : '自定义背景仅保存在原设备，已回退到内置主题。'}</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</aside>
     </div>
     <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
     {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawerLabel(drawer)} onKeyDown={handleDrawerKeyDown}><header><h2>{drawerLabel(drawer)}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawerLabel(drawer)}`} onClick={() => setDrawer(null)}>×</button></header>

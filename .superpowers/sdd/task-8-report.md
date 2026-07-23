@@ -18,6 +18,21 @@
 - Runtime sync scan of `src/newtab`, `src/features/settings`, and `public/manifest.json` — no sync provider/coordinator/status calls or Microsoft UI remain; the only Microsoft string is an absence assertion in the app test.
 - `git diff --check` — clean.
 
+## Second review follow-up
+
+- `main.tsx` now reuses `chromeLocalStorage`, whose adapter exposes `remove`; `ChromeWeatherCache.clear()` therefore deletes the weather key in production instead of writing `undefined`.
+- The reset integration test uses a real `ChromeWeatherCache` backed by a `remove` spy, and the cache unit test asserts the remove path without a fallback `set` call.
+- The weather drawer test lets initial cached hydration settle, advances the freshness clock, then proves opening the drawer starts a second normal refresh. Removing `weather.refresh()` from the drawer-open path makes that test fail.
+- Topbar CSS now has explicit shrinking/min-width rules, compact gaps, seconds/city hiding at 760px, and additional 430px padding and brand/action compaction. A standalone CSS structural test verifies these breakpoints while the App test verifies the retained control markup.
+- Background read failures use custom-background fallback wording only when a custom background is selected; ordinary failures are a nonfatal local-background warning.
+
+### Second follow-up verification
+
+- Focused: `npm test -- src/newtab/App.test.tsx src/newtab/app.css.test.mjs src/features/weather/weatherCache.test.ts` — 31 passing.
+- Full: `npm test` — 30 files, 200 tests passing.
+- Build: `npm run build` — passing.
+- Sync and unused-prop scans remain clean; only the intentional Microsoft absence assertion remains in tests.
+
 ## Review notes
 
 - The weather client is intentionally still network-backed only after a user selects a city or clicks the explicit current-location action. The manifest includes only the two Open-Meteo hosts and the required `geolocation` permission.

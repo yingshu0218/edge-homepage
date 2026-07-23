@@ -2,24 +2,20 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { BackgroundStore } from '../storage/backgroundStore';
+import { chromeLocalStorage } from '../storage/chromeApi';
 import { SnapshotRepository } from '../storage/snapshotRepository';
 import { ChromeWeatherCache } from '../features/weather/weatherCache';
 import { createOpenMeteoClient } from '../features/weather/openMeteoClient';
 import { App, type AppServices } from './App';
 
-const localStorageAdapter = {
-  get: (keys?: string | string[]) => chrome.storage.local.get(keys),
-  set: (items: Record<string, unknown>) => chrome.storage.local.set(items),
-};
-
-const repository = new SnapshotRepository(localStorageAdapter);
+const repository = new SnapshotRepository(chromeLocalStorage);
 const backgrounds = new BackgroundStore();
 
 const services: AppServices = {
   repository,
   backgrounds,
   weather: createOpenMeteoClient(),
-  weatherCache: new ChromeWeatherCache(localStorageAdapter),
+  weatherCache: new ChromeWeatherCache(chromeLocalStorage),
   geolocation: navigator.geolocation,
   navigate(destination) {
     window.location.assign(destination);

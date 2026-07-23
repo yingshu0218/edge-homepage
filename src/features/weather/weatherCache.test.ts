@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { WeatherLocation } from '../../domain/models';
 import type { ChromeStorageArea } from '../../storage/types';
@@ -108,6 +108,20 @@ describe('ChromeWeatherCache', () => {
     await new ChromeWeatherCache(storage).clear();
 
     expect(values).toEqual({ 'app:snapshot': snapshot });
+  });
+
+  it('uses the storage remove operation when the adapter exposes one', async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const storage: ChromeStorageArea = {
+      get: vi.fn().mockResolvedValue({}),
+      set: vi.fn().mockResolvedValue(undefined),
+      remove,
+    };
+
+    await new ChromeWeatherCache(storage).clear();
+
+    expect(remove).toHaveBeenCalledWith('weather:forecast-cache');
+    expect(storage.set).not.toHaveBeenCalled();
   });
 });
 

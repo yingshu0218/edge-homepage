@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot } from '../domain/models';
 import type { WeatherClient, WeatherForecast } from '../features/weather/types';
+import { ChromeWeatherCache } from '../features/weather/weatherCache';
+import type { ChromeStorageArea } from '../storage/types';
 import { exportSnapshot } from '../storage/transfer';
 import { App, type AppServices } from './App';
 
@@ -117,16 +119,20 @@ describe('new tab application', () => {
     expect(summary.querySelector('.weather-summary-location')).toHaveTextContent('北京');
   });
 
-  it('checks normal weather freshness when the weather drawer opens', async () => {
+  it('runs a second normal freshness check when the weather drawer opens', async () => {
     const snapshot = createDefaultSnapshot();
     snapshot.settings.weatherLocation = forecast().location;
     const services = fakeServices(snapshot);
+    let currentTime = forecast().fetchedAt;
+    services.now = () => currentTime;
     services.weatherCache.load = vi.fn().mockResolvedValue(forecast());
+    services.weather.getForecast = vi.fn().mockResolvedValue(forecast());
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await screen.findByRole('button', { name: /天气.*有雨/ });
+    expect(services.weatherCache.load).toHaveBeenCalledTimes(1);
+    currentTime += 30 * 60 * 1_000 + 1;
     fireEvent.click(screen.getByRole('button', { name: /天气/ }));
-    await waitFor(() => expect(services.weatherCache.load).toHaveBeenCalled());
-    expect(services.weather.getForecast).not.toHaveBeenCalled();
+    await waitFor(() => expect(services.weather.getForecast).toHaveBeenCalledTimes(1));
   });
 
   it('keeps the page usable and warns locally when background loading fails', async () => {
@@ -135,16 +141,45 @@ describe('new tab application', () => {
     render(<App services={services} />);
     expect(await screen.findByText('GitHub')).toBeInTheDocument();
     expect(screen.getByRole('status', { name: '背景回退提示' })).toHaveTextContent('background unavailable');
+    expect(screen.getByRole('status', { name: '背景回退提示' })).not.toHaveTextContent('自定义背景读取失败');
   });
 
-  it('clears the weather cache as part of a confirmed reset', async () => {
+  it('uses fallback copy for a selected custom background that cannot be read', async () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.settings.useCustomBackground = true;
+    const services = fakeServices(snapshot);
+    services.backgrounds.get = vi.fn().mockRejectedValue(new Error('background unavailable'));
+    render(<App services={services} />);
+    expect(await screen.findByText('GitHub')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: '背景回退提示' })).toHaveTextContent('自定义背景读取失败');
+  });
+
+  it('clears the real weather-cache adapter with remove as part of a confirmed reset', async () => {
     const services = fakeServices(createDefaultSnapshot());
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const adapter: ChromeStorageArea = { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue(undefined), remove };
+    services.weatherCache = new ChromeWeatherCache(adapter);
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<App services={services} />);
     await screen.findByText('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.click(screen.getByRole('button', { name: '重置全部数据' }));
-    await waitFor(() => expect(services.weatherCache.clear).toHaveBeenCalledOnce());
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('weather:forecast-cache'));
+  });
+
+  it('keeps the minimum-width topbar controls structurally available for compact styling', async () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.settings.weatherLocation = forecast().location;
+    const services = fakeServices(snapshot);
+    services.weatherCache.load = vi.fn().mockResolvedValue(forecast());
+    render(<App services={services} />);
+    await screen.findByRole('button', { name: /天气.*有雨/ });
+    expect(screen.getByRole('link', { name: 'Day Start 首页' })).toHaveClass('brand');
+    expect(screen.getByRole('button', { name: /时间/ })).toHaveClass('summary-button');
+    expect(screen.getByRole('button', { name: /天气/ })).toHaveClass('weather-summary');
+    expect(screen.getByRole('button', { name: '主题' })).toHaveClass('icon-button');
+    expect(screen.getByRole('button', { name: '设置' })).toHaveClass('icon-button');
+    expect(screen.getByRole('button', { name: /时间/ }).querySelector('.clock-summary-primary')).toBeInTheDocument();
   });
 
   it('wires card edit, delete, and sort drawer actions to local state', async () => {
