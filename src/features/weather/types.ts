@@ -36,3 +36,13 @@ export interface WeatherClient {
   searchLocations(query: string, signal?: AbortSignal): Promise<WeatherLocation[]>;
   getForecast(location: WeatherLocation, signal?: AbortSignal): Promise<WeatherForecast>;
 }
+
+export type ReverseGeocodeResult = {
+  name: string;
+  admin?: string;
+  country: string;
+};
+
+export interface ReverseGeocodeClient {
+  reverse(latitude: number, longitude: number, signal?: AbortSignal): Promise<ReverseGeocodeResult>;
+}
