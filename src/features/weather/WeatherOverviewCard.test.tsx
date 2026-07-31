@@ -78,6 +78,30 @@ describe('WeatherOverviewCard', () => {
     expect(within(card).getByText('天气与地点：Open-Meteo')).toBeInTheDocument();
   });
 
+  it.each([
+    ['missing collections', undefined, undefined],
+    ['non-array collections', { invalid: true }, 'not-hours'],
+  ])('keeps the ready card usable with %s', (_description, daily, hourly) => {
+    const forecast = { ...makeForecast(), daily, hourly } as unknown as WeatherForecast;
+
+    render(<WeatherOverviewCard state={{ kind: 'ready', forecast, refreshing: false, stale: false }} unit="celsius" onOpen={vi.fn()} />);
+
+    const card = screen.getByRole('button', { name: /福州.*晴.*30℃/ });
+    expect(within(card).queryByText('34℃ / 26℃')).not.toBeInTheDocument();
+    expect(within(card).getByRole('list', { name: '未来三小时' })).toBeEmptyDOMElement();
+  });
+
+  it('skips malformed hourly entries while preserving valid readings', () => {
+    const forecast = {
+      ...makeForecast(),
+      hourly: [null, makeForecast().hourly[0], { time: 123 }],
+    } as unknown as WeatherForecast;
+
+    render(<WeatherOverviewCard state={{ kind: 'ready', forecast, refreshing: false, stale: false }} unit="celsius" onOpen={vi.fn()} />);
+
+    expect(screen.getByRole('list', { name: '未来三小时' }).querySelectorAll('li')).toHaveLength(1);
+  });
+
   it('converts every displayed temperature to Fahrenheit', () => {
     const forecast = makeForecast();
     render(<WeatherOverviewCard state={{ kind: 'ready', forecast, refreshing: false, stale: false }} unit="fahrenheit" onOpen={vi.fn()} />);

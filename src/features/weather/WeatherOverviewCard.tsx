@@ -1,4 +1,5 @@
 import type { TemperatureUnit, WeatherLocation } from '../../domain/models';
+import type { HourlyWeather } from './types';
 import type { WeatherState } from './useWeather';
 import { convertTemperature, describeWeatherCode } from './weatherCodes';
 
@@ -29,6 +30,15 @@ function sourceLabel(location: WeatherLocation): string {
   return location.id.startsWith('coords:')
     ? '天气：Open-Meteo · 地点：BigDataCloud'
     : '天气与地点：Open-Meteo';
+}
+
+function isHourlyWeather(value: unknown): value is HourlyWeather {
+  if (!value || typeof value !== 'object') return false;
+  const hour = value as Partial<HourlyWeather>;
+  return typeof hour.time === 'string'
+    && typeof hour.temperature === 'number'
+    && typeof hour.weatherCode === 'number'
+    && typeof hour.isDay === 'boolean';
 }
 
 export function WeatherOverviewCard({ state, unit, configuredLocation, onOpen }: WeatherOverviewCardProps) {
@@ -73,7 +83,9 @@ export function WeatherOverviewCard({ state, unit, configuredLocation, onOpen }:
 
   const { forecast } = state;
   const currentWeather = describeWeatherCode(forecast.current.weatherCode, forecast.current.isDay);
-  const today = forecast.daily[0];
+  const daily = Array.isArray(forecast.daily) ? forecast.daily : [];
+  const hourly = Array.isArray(forecast.hourly) ? forecast.hourly : [];
+  const today = daily[0];
   const currentTemperature = temperature(forecast.current.temperature, unit);
 
   return (
@@ -97,7 +109,7 @@ export function WeatherOverviewCard({ state, unit, configuredLocation, onOpen }:
       {state.refreshing ? <span role="status">正在刷新天气</span> : null}
       {state.stale && !state.refreshing ? <span role="alert">更新失败，正在显示上次数据</span> : null}
       <ul className="weather-overview-hours" aria-label="未来三小时">
-        {forecast.hourly.slice(0, 3).map((hour) => {
+        {hourly.slice(0, 3).filter(isHourlyWeather).map((hour) => {
           const weather = describeWeatherCode(hour.weatherCode, hour.isDay);
           return (
             <li key={hour.time}>
