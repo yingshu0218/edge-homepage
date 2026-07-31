@@ -6,6 +6,7 @@ import { chromeLocalStorage } from '../storage/chromeApi';
 import { SnapshotRepository } from '../storage/snapshotRepository';
 import { ChromeWeatherCache } from '../features/weather/weatherCache';
 import { createOpenMeteoClient } from '../features/weather/openMeteoClient';
+import { createBigDataCloudReverseGeocodeClient } from '../features/weather/reverseGeocodeClient';
 import { App, type AppServices } from './App';
 
 const repository = new SnapshotRepository(chromeLocalStorage);
@@ -15,6 +16,7 @@ const services: AppServices = {
   repository,
   backgrounds,
   weather: createOpenMeteoClient(),
+  reverseGeocoder: createBigDataCloudReverseGeocodeClient(),
   weatherCache: new ChromeWeatherCache(chromeLocalStorage),
   geolocation: navigator.geolocation,
   navigate(destination) {

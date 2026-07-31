@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TemperatureUnit, WeatherLocation } from '../../domain/models';
 import { WeatherDrawer, type GeolocationAdapter } from './WeatherDrawer';
-import type { WeatherClient, WeatherForecast } from './types';
+import type { ReverseGeocodeClient, WeatherClient, WeatherForecast } from './types';
 import type { WeatherState } from './useWeather';
 
 const fuzhou: WeatherLocation = {
@@ -58,11 +58,16 @@ function client(searchLocations: WeatherClient['searchLocations'] = vi.fn().mock
   return { searchLocations, getForecast: vi.fn() };
 }
 
+function defaultReverseGeocoder(): ReverseGeocodeClient {
+  return { reverse: vi.fn().mockResolvedValue({ name: '福州市', admin: '福建省', country: '中国' }) };
+}
+
 function renderDrawer({
   state = { kind: 'unconfigured' },
   searchLocations,
   unit = 'celsius',
   geolocation,
+  reverseGeocoder = defaultReverseGeocoder(),
   onLocationChange = vi.fn(),
   onUnitChange = vi.fn(),
   onRefresh = vi.fn(),
@@ -71,6 +76,7 @@ function renderDrawer({
   searchLocations?: WeatherClient['searchLocations'];
   unit?: TemperatureUnit;
   geolocation?: GeolocationAdapter;
+  reverseGeocoder?: ReverseGeocodeClient;
   onLocationChange?: (location: WeatherLocation) => void;
   onUnitChange?: (unit: TemperatureUnit) => void;
   onRefresh?: () => void | Promise<void>;
@@ -85,6 +91,7 @@ function renderDrawer({
       onUnitChange={onUnitChange}
       onRefresh={onRefresh}
       geolocation={geolocation}
+      reverseGeocoder={reverseGeocoder}
     />,
   );
 }
@@ -194,21 +201,68 @@ describe('WeatherDrawer opt-in geolocation', () => {
     expect(geolocation.getCurrentPosition).toHaveBeenCalledOnce();
   });
 
-  it('converts coordinates into a saved 当前所在位置 without reverse geocoding', () => {
+  it('resolves and saves the real city after the user requests current location', async () => {
     const onLocationChange = vi.fn();
+    const reverse = vi.fn().mockResolvedValue({ name: '福州市', admin: '福建省', country: '中国' });
     const geolocation: GeolocationAdapter = {
       getCurrentPosition(success) {
         success({ coords: { latitude: 26.08044, longitude: 119.30049 } });
       },
     };
-    renderDrawer({ geolocation, onLocationChange });
+    renderDrawer({ geolocation, reverseGeocoder: { reverse }, onLocationChange });
     fireEvent.click(screen.getByRole('button', { name: '使用当前位置' }));
-    expect(onLocationChange).toHaveBeenCalledWith(expect.objectContaining({
+
+    await waitFor(() => expect(onLocationChange).toHaveBeenCalledWith(expect.objectContaining({
       id: 'coords:26.080,119.300',
+      name: '福州市',
+      admin: '福建省',
+      country: '中国',
+    })));
+    expect(reverse).toHaveBeenCalledWith(26.08044, 119.30049, expect.any(AbortSignal));
+  });
+
+  it('keeps weather setup usable when city resolution fails', async () => {
+    const onLocationChange = vi.fn();
+    renderDrawer({
+      geolocation: {
+        getCurrentPosition(success) {
+          success({ coords: { latitude: 26.08044, longitude: 119.30049 } });
+        },
+      },
+      reverseGeocoder: { reverse: vi.fn().mockRejectedValue(new Error('offline')) },
+      onLocationChange,
+    });
+    fireEvent.click(screen.getByRole('button', { name: '使用当前位置' }));
+
+    await waitFor(() => expect(onLocationChange).toHaveBeenCalledWith(expect.objectContaining({
       name: '当前位置',
-      latitude: 26.08044,
-      longitude: 119.30049,
-    }));
+      country: '定位',
+    })));
+    expect(screen.getByRole('alert')).toHaveTextContent('城市名称解析失败');
+  });
+
+  it('does not let a prior city resolution overwrite a newer location attempt', async () => {
+    let resolveFirst!: (place: { name: string; admin?: string; country: string }) => void;
+    let resolveSecond!: (place: { name: string; admin?: string; country: string }) => void;
+    const reverse = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    const geolocation: GeolocationAdapter = {
+      getCurrentPosition(success) {
+        success({ coords: { latitude: 26.08044, longitude: 119.30049 } });
+      },
+    };
+    const onLocationChange = vi.fn();
+    renderDrawer({ geolocation, reverseGeocoder: { reverse }, onLocationChange });
+
+    fireEvent.click(screen.getByRole('button', { name: '使用当前位置' }));
+    fireEvent.click(screen.getByRole('button', { name: '正在获取位置…' }));
+    resolveSecond({ name: '厦门市', admin: '福建省', country: '中国' });
+    await waitFor(() => expect(onLocationChange).toHaveBeenLastCalledWith(expect.objectContaining({ name: '厦门市' })));
+    resolveFirst({ name: '福州市', admin: '福建省', country: '中国' });
+    await act(async () => Promise.resolve());
+
+    expect(onLocationChange).toHaveBeenCalledTimes(1);
   });
 
   it('explains a denied location request next to the recovery action', () => {
@@ -231,7 +285,7 @@ describe('WeatherDrawer forecast states', () => {
     view.rerender(
       <WeatherDrawer
         state={{ kind: 'loading' }} client={client()} unit="celsius"
-        onLocationChange={vi.fn()} onUnitChange={vi.fn()} onRefresh={vi.fn()}
+        onLocationChange={vi.fn()} onUnitChange={vi.fn()} onRefresh={vi.fn()} reverseGeocoder={defaultReverseGeocoder()}
       />,
     );
     expect(screen.getByRole('status')).toHaveTextContent('正在获取天气');
@@ -255,7 +309,7 @@ describe('WeatherDrawer forecast states', () => {
     expect(onUnitChange).toHaveBeenCalledWith('fahrenheit');
     view.rerender(
       <WeatherDrawer state={state} client={client()} unit="fahrenheit" location={fuzhou}
-        onLocationChange={vi.fn()} onUnitChange={onUnitChange} onRefresh={vi.fn()} />,
+        onLocationChange={vi.fn()} onUnitChange={onUnitChange} onRefresh={vi.fn()} reverseGeocoder={defaultReverseGeocoder()} />,
     );
     expect(screen.getAllByText('86℉').length).toBeGreaterThan(0);
   });
@@ -276,7 +330,7 @@ describe('WeatherDrawer forecast states', () => {
     view.rerender(
       <WeatherDrawer state={{ kind: 'ready', forecast, refreshing: false, stale: true, error: '网络离线' }}
         client={client()} unit="celsius" location={fuzhou} onLocationChange={vi.fn()}
-        onUnitChange={vi.fn()} onRefresh={vi.fn()} />,
+        onUnitChange={vi.fn()} onRefresh={vi.fn()} reverseGeocoder={defaultReverseGeocoder()} />,
     );
     expect(screen.getByRole('alert')).toHaveTextContent('网络离线');
     expect(screen.getAllByText('30℃').length).toBeGreaterThan(0);
@@ -291,7 +345,7 @@ describe('WeatherDrawer forecast states', () => {
     view.rerender(
       <WeatherDrawer state={{ kind: 'ready', forecast: makeForecast(), refreshing: false, stale: false }}
         client={client()} unit="celsius" location={fuzhou} onLocationChange={vi.fn()}
-        onUnitChange={vi.fn()} onRefresh={onRefresh} />,
+        onUnitChange={vi.fn()} onRefresh={onRefresh} reverseGeocoder={defaultReverseGeocoder()} />,
     );
     fireEvent.click(screen.getByRole('button', { name: '刷新天气' }));
     expect(onRefresh).toHaveBeenCalledTimes(2);

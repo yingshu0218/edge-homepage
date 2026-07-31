@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
 import type { TemperatureUnit, WeatherLocation } from '../../domain/models';
-import type { WeatherClient, WeatherForecast } from './types';
+import type { ReverseGeocodeClient, WeatherClient, WeatherForecast } from './types';
 import type { WeatherState } from './useWeather';
 import { convertTemperature, describeWeatherCode } from './weatherCodes';
 
@@ -34,6 +34,7 @@ export type WeatherDrawerProps = {
   onUnitChange(unit: TemperatureUnit): void;
   onRefresh(): void | Promise<void>;
   geolocation?: GeolocationAdapter;
+  reverseGeocoder: ReverseGeocodeClient;
 };
 
 function messageFrom(error: unknown, fallback: string): string {
@@ -175,6 +176,7 @@ export function WeatherDrawer({
   onUnitChange,
   onRefresh,
   geolocation,
+  reverseGeocoder,
 }: WeatherDrawerProps) {
   const searchHelpId = useId();
   const [query, setQuery] = useState('');
@@ -185,6 +187,7 @@ export function WeatherDrawer({
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string>();
   const locationAttempt = useRef(0);
+  const reverseController = useRef<AbortController | undefined>(undefined);
   const currentLocation = selectedLocation ?? location;
 
   useEffect(() => {
@@ -223,6 +226,7 @@ export function WeatherDrawer({
 
   useEffect(() => () => {
     locationAttempt.current += 1;
+    reverseController.current?.abort();
   }, []);
 
   const chooseLocation = (candidate: WeatherLocation) => {
@@ -250,6 +254,7 @@ export function WeatherDrawer({
 
     const attempt = locationAttempt.current + 1;
     locationAttempt.current = attempt;
+    reverseController.current?.abort();
     setLocating(true);
     adapter.getCurrentPosition(
       ({ coords }) => {
@@ -262,15 +267,37 @@ export function WeatherDrawer({
         } catch {
           // UTC is a valid fallback when the runtime cannot resolve a local zone.
         }
-        setLocating(false);
-        onLocationChange({
-          id: `coords:${roundedLatitude},${roundedLongitude}`,
-          name: '当前位置',
-          country: '定位',
-          latitude: coords.latitude,
-          longitude: coords.longitude,
-          timezone,
-        });
+        const controller = new AbortController();
+        reverseController.current?.abort();
+        reverseController.current = controller;
+        void reverseGeocoder.reverse(coords.latitude, coords.longitude, controller.signal)
+          .then((place) => {
+            if (locationAttempt.current !== attempt) return;
+            onLocationChange({
+              id: `coords:${roundedLatitude},${roundedLongitude}`,
+              name: place.name,
+              ...(place.admin ? { admin: place.admin } : {}),
+              country: place.country,
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              timezone,
+            });
+          })
+          .catch(() => {
+            if (controller.signal.aborted || locationAttempt.current !== attempt) return;
+            setLocationError('已获取当前位置，但城市名称解析失败；天气仍可使用。');
+            onLocationChange({
+              id: `coords:${roundedLatitude},${roundedLongitude}`,
+              name: '当前位置',
+              country: '定位',
+              latitude: coords.latitude,
+              longitude: coords.longitude,
+              timezone,
+            });
+          })
+          .finally(() => {
+            if (locationAttempt.current === attempt) setLocating(false);
+          });
       },
       (error) => {
         if (locationAttempt.current !== attempt) return;
@@ -322,7 +349,7 @@ export function WeatherDrawer({
         ) : null}
 
         <div className="weather-geolocation-action">
-          <button type="button" disabled={locating} onClick={requestCurrentLocation}>
+          <button type="button" onClick={requestCurrentLocation}>
             {locating ? '正在获取位置…' : '使用当前位置'}
           </button>
           {locationError ? <p role="alert">{locationError}</p> : null}

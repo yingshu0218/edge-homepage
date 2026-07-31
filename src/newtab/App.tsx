@@ -18,7 +18,7 @@ import { formatClock } from '../features/time/timeFormat';
 import { useLocalClock } from '../features/time/useLocalClock';
 import { WeatherDrawer } from '../features/weather/WeatherDrawer';
 import { useWeather } from '../features/weather/useWeather';
-import type { WeatherClient } from '../features/weather/types';
+import type { ReverseGeocodeClient, WeatherClient } from '../features/weather/types';
 import { convertTemperature, describeWeatherCode } from '../features/weather/weatherCodes';
 import { exportSnapshot, parseSnapshot } from '../storage/transfer';
 import type { SnapshotStorage, WeatherCacheStore } from '../storage/types';
@@ -30,6 +30,7 @@ export type AppServices = {
   repository: SnapshotStorage;
   backgrounds: Backgrounds;
   weather: WeatherClient;
+  reverseGeocoder: ReverseGeocodeClient;
   weatherCache: WeatherCacheStore;
   geolocation?: Pick<Geolocation, 'getCurrentPosition'>;
   navigate(destination: string): void;
@@ -231,7 +232,7 @@ export function App({ services }: { services: AppServices }) {
       {drawer === 'groups' ? <GroupManager snapshot={snapshot} onCreate={(name) => void persist(addGroup(snapshot, { id: createId(), name }, now()))} onRename={(id, name) => void persist(editGroup(snapshot, id, name, now()))} onReorder={(activeId, overId) => void persist(reorderGroups(snapshot, activeId, overId, now()))} onDelete={(id, mode, destinationId) => { if (mode === 'delete') void persist(deleteGroupAndBookmarks(snapshot, id, now())); else if (destinationId) void persist(deleteGroup(snapshot, id, destinationId, now())); }} /> : null}
       {drawer === 'bookmarks' ? <BookmarkManagerDrawer snapshot={snapshot} groupId={activeGroup} onEdit={(bookmark) => { setDrawer(null); setEditing(bookmark); setDialogOpen(true); }} onDelete={(ids) => void persist(deleteBookmarks(snapshot, ids, now()))} onMove={(ids, destination) => void persist(moveBookmarks(snapshot, ids, destination, now()))} onOpenSort={() => setDrawer('sort')} /> : null}
       {drawer === 'time' ? <TimeDrawer currentTime={currentTime} clockHour12={snapshot.settings.clockHour12} clockShowSeconds={snapshot.settings.clockShowSeconds} clockShowFullDate={snapshot.settings.clockShowFullDate} onChange={updateSettings} /> : null}
-      {drawer === 'weather' ? <WeatherDrawer state={weather.state} client={services.weather} location={snapshot.settings.weatherLocation} selectedLocation={snapshot.settings.weatherLocation} unit={snapshot.settings.temperatureUnit} onLocationChange={(location) => updateSettings({ weatherLocation: location })} onUnitChange={(temperatureUnit) => updateSettings({ temperatureUnit })} onRefresh={() => weather.refresh({ force: true })} geolocation={services.geolocation} /> : null}
+      {drawer === 'weather' ? <WeatherDrawer state={weather.state} client={services.weather} location={snapshot.settings.weatherLocation} selectedLocation={snapshot.settings.weatherLocation} unit={snapshot.settings.temperatureUnit} onLocationChange={(location) => updateSettings({ weatherLocation: location })} onUnitChange={(temperatureUnit) => updateSettings({ temperatureUnit })} onRefresh={() => weather.refresh({ force: true })} geolocation={services.geolocation} reverseGeocoder={services.reverseGeocoder} /> : null}
       {drawer === 'settings' ? <SettingsPanel snapshot={snapshot} onSearchTemplateChange={(searchTemplate) => updateSettings({ searchTemplate })} onSettingsChange={updateSettings} onImport={importData} onExport={() => services.download(exportSnapshot(snapshot), `day-start-${new Date(now()).toISOString().slice(0, 10)}.json`)} onReset={() => void reset()} /> : null}
     </aside></div>}
   </main>;

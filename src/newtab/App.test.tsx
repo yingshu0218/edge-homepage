@@ -31,6 +31,7 @@ function fakeServices(snapshot: AppSnapshot, load?: () => Promise<AppSnapshot>):
     repository: { load: load ?? vi.fn().mockResolvedValue(snapshot), save: vi.fn().mockResolvedValue(undefined) },
     backgrounds: { get: vi.fn().mockResolvedValue(undefined), put: vi.fn().mockResolvedValue(undefined), clear: vi.fn().mockResolvedValue(undefined) },
     weather,
+    reverseGeocoder: { reverse: vi.fn().mockResolvedValue({ name: '福州市', admin: '福建省', country: '中国' }) },
     weatherCache: { load: vi.fn().mockResolvedValue(undefined), save: vi.fn().mockResolvedValue(undefined), clear: vi.fn().mockResolvedValue(undefined) },
     navigate: vi.fn(), download: vi.fn(), now: () => 1_752_636_060_000, createId: () => 'docs',
   };
