@@ -16,6 +16,14 @@ describe('compact topbar CSS', () => {
   });
 });
 
+describe('weather overview layout CSS', () => {
+  it('keeps the dashboard column responsive without horizontal overflow', () => {
+    expect(css).toMatch(/\.dashboard-column\s*\{[^}]*display:\s*grid/);
+    expect(css).toMatch(/\.weather-overview-card\s*\{[^}]*width:\s*100%[^}]*min-height:\s*310px/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*980px\)[\s\S]*\.workspace\s*\{[^}]*grid-template-columns:\s*1fr/);
+  });
+});
+
 describe('drawer palette CSS', () => {
   it('keeps every drawer on an explicit dark palette in light appearance', () => {
     expect(css).toMatch(/\.drawer \{[^}]*--drawer-text: #f5f2fb;[^}]*--drawer-muted: rgba\(245,242,251,\.66\);[^}]*background: #191529;[^}]*color: var\(--drawer-text\);[^}]*color-scheme: dark;/);
@@ -23,6 +31,6 @@ describe('drawer palette CSS', () => {
     expect(css).toMatch(/\.drawer :where\(input:not\(\[type="range"\]\), select\) \{[^}]*background: var\(--drawer-control\);[^}]*color: var\(--drawer-text\);/);
     expect(css).toContain('.drawer :where(button) { color: inherit; }');
     expect(css).toContain('.drawer input::placeholder { color: var(--drawer-muted); }');
-    expect(css).not.toMatch(/\[data-appearance="light"\] \.weather-/);
+    expect(css).not.toMatch(/\[data-appearance="light"\] \.weather-(?!overview)/);
   });
 });

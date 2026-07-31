@@ -26,6 +26,17 @@ function forecast(): WeatherForecast {
   };
 }
 
+function makeOverviewForecast(): WeatherForecast {
+  return {
+    ...forecast(),
+    hourly: [
+      { time: '2026-07-21T14:00', temperature: 20, precipitationProbability: 80, weatherCode: 61, isDay: true },
+      { time: '2026-07-21T15:00', temperature: 19, precipitationProbability: 75, weatherCode: 61, isDay: true },
+      { time: '2026-07-21T16:00', temperature: 19, precipitationProbability: 65, weatherCode: 61, isDay: true },
+    ],
+  };
+}
+
 function fakeServices(snapshot: AppSnapshot, load?: () => Promise<AppSnapshot>): AppServices {
   return {
     repository: { load: load ?? vi.fn().mockResolvedValue(snapshot), save: vi.fn().mockResolvedValue(undefined) },
@@ -102,13 +113,14 @@ describe('new tab application', () => {
     render(<App services={services} />);
     await screen.findByText('GitHub');
     const time = screen.getByRole('button', { name: /时间/ });
+    const weatherSummary = screen.getByRole('button', { name: /^天气/ });
     fireEvent.click(time);
     expect(screen.getByRole('dialog', { name: '时间设置' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /天气/ }));
+    fireEvent.click(weatherSummary);
     expect(screen.queryByRole('dialog', { name: '时间设置' })).not.toBeInTheDocument();
     const weatherDrawer = screen.getByRole('dialog', { name: '天气' });
     fireEvent.keyDown(weatherDrawer, { key: 'Escape' });
-    await waitFor(() => expect(screen.getByRole('button', { name: /天气/ })).toHaveFocus());
+    await waitFor(() => expect(weatherSummary).toHaveFocus());
   });
 
   it('persists time preferences and reflects seconds in the top summary', async () => {
@@ -134,6 +146,22 @@ describe('new tab application', () => {
     expect(summary.querySelector('.weather-summary-location')).toHaveTextContent('北京');
   });
 
+  it('places the weather overview after the mood card and restores card focus', async () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.settings.weatherLocation = forecast().location;
+    const services = fakeServices(snapshot);
+    services.weatherCache.load = vi.fn().mockResolvedValue(makeOverviewForecast());
+    render(<App services={services} />);
+
+    const overview = await screen.findByRole('button', { name: /北京.*有雨/ });
+    expect(overview.parentElement).toHaveClass('dashboard-column');
+    expect(overview.previousElementSibling).toHaveClass('mood-card');
+    fireEvent.click(overview);
+    const drawer = screen.getByRole('dialog', { name: '天气' });
+    fireEvent.keyDown(drawer, { key: 'Escape' });
+    await waitFor(() => expect(overview).toHaveFocus());
+  });
+
   it('runs a second normal freshness check when the weather drawer opens', async () => {
     const snapshot = createDefaultSnapshot();
     snapshot.settings.weatherLocation = forecast().location;
@@ -146,7 +174,7 @@ describe('new tab application', () => {
     await screen.findByRole('button', { name: /天气.*有雨/ });
     expect(services.weatherCache.load).toHaveBeenCalledTimes(1);
     currentTime += 30 * 60 * 1_000 + 1;
-    fireEvent.click(screen.getByRole('button', { name: /天气/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^天气/ }));
     await waitFor(() => expect(services.weather.getForecast).toHaveBeenCalledTimes(1));
   });
 
@@ -191,7 +219,7 @@ describe('new tab application', () => {
     await screen.findByRole('button', { name: /天气.*有雨/ });
     expect(screen.getByRole('link', { name: 'Day Start 首页' })).toHaveClass('brand');
     expect(screen.getByRole('button', { name: /时间/ })).toHaveClass('summary-button');
-    expect(screen.getByRole('button', { name: /天气/ })).toHaveClass('weather-summary');
+    expect(screen.getByRole('button', { name: /^天气/ })).toHaveClass('weather-summary');
     expect(screen.getByRole('button', { name: '主题' })).toHaveClass('icon-button');
     expect(screen.getByRole('button', { name: '设置' })).toHaveClass('icon-button');
     expect(screen.getByRole('button', { name: /时间/ }).querySelector('.clock-summary-primary')).toBeInTheDocument();

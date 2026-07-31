@@ -9,8 +9,9 @@ html, body, #root { width: 100%; min-width: 320px; min-height: 100%; margin: 0; 
 body { overflow-x: hidden; }
 [data-appearance="light"] { color: #182333; background: #e7edf4; }
 [data-appearance="light"] .app-shell::before { background: rgba(244,248,252,var(--theme-overlay,.38)); }
-[data-appearance="light"] .local-data-label,[data-appearance="light"] .summary-button,[data-appearance="light"] .icon-button,[data-appearance="light"] [data-bookmark-id],[data-appearance="light"] .mood-card { border-color: rgba(21,38,58,.16); background: rgba(255,255,255,.52); color: #182333; }
-[data-appearance="light"] [data-bookmark-id] small,[data-appearance="light"] .date-line,[data-appearance="light"] .section-heading > div,[data-appearance="light"] .group-rail button { color: rgba(24,35,51,.62); }
+[data-appearance="light"] .local-data-label,[data-appearance="light"] .summary-button,[data-appearance="light"] .icon-button,[data-appearance="light"] [data-bookmark-id],[data-appearance="light"] .mood-card,[data-appearance="light"] .weather-overview-card { border-color: rgba(21,38,58,.16); background: rgba(255,255,255,.52); color: #182333; }
+[data-appearance="light"] [data-bookmark-id] small,[data-appearance="light"] .date-line,[data-appearance="light"] .section-heading > div,[data-appearance="light"] .group-rail button,[data-appearance="light"] .weather-overview-eyebrow,[data-appearance="light"] .weather-overview-metrics,[data-appearance="light"] .weather-overview-source { color: rgba(24,35,51,.62); }
+[data-appearance="light"] .weather-overview-hours li { border-color: rgba(21,38,58,.12); background: rgba(255,255,255,.42); }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--theme-accent-color, #8ee7d0); outline-offset: 3px; }
@@ -58,6 +59,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .group-rail .group-tabs, .group-rail [role="tablist"], .group-actions { display: flex; align-items: center; gap: 5px; }.group-action { padding: 5px 4px !important; opacity: .55; }.group-action:hover, .group-action:focus-visible { opacity: 1; }
 .group-rail button { border: 0; border-radius: 999px; padding: 7px 10px; background: transparent; color: rgba(255,255,255,.52); font-size: 11px; cursor: pointer; }
 .group-rail [aria-selected="true"] { background: rgba(255,255,255,.12); color: white; }
+.dashboard-column { min-width: 0; display: grid; align-content: start; gap: 18px; }
 .mood-card { padding: 24px; border: 1px solid rgba(255,255,255,.16); border-radius: 20px; background: rgba(255,255,255,.075); backdrop-filter: blur(24px); box-shadow: 0 24px 60px rgba(6,4,14,.18); }
 .mood-card p { margin: 0; color: rgba(255,255,255,.51); font-size: 10px; }
 .mood-card h2 { margin: 10px 0 4px; font-size: 32px; font-weight: 300; }
@@ -66,6 +68,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .mood-card dl { margin: 12px 0 0; font-size: 11px; }
 .mood-card dl div { display: flex; justify-content: space-between; padding: 7px 0; }
 .mood-card dt { color: rgba(255,255,255,.88); }.mood-card dd { margin: 0; color: rgba(255,255,255,.48); }.mood-card .success { color: #9bf0c9; }
+.weather-overview-card { width: 100%; min-width: 0; min-height: 310px; display: block; padding: 22px; overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 20px; background: rgba(255,255,255,.075); color: inherit; text-align: left; backdrop-filter: blur(24px); box-shadow: 0 24px 60px rgba(6,4,14,.18); cursor: pointer; }
+.weather-overview-card > span { display: block; }.weather-overview-eyebrow, .weather-overview-source { color: rgba(255,255,255,.51); font-size: 10px; }
+.weather-overview-header { display: flex !important; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-top: 10px; }.weather-overview-header strong:first-child { min-width: 0; overflow: hidden; font-size: 22px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }.weather-overview-header strong:last-child { margin-left: auto; font-size: 26px; font-weight: 300; letter-spacing: -.04em; white-space: nowrap; }.weather-overview-header [role="img"] { font-size: 16px; }
+.weather-overview-metrics { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 12px; margin-top: 16px; color: rgba(255,255,255,.58); font-size: 10px; }.weather-overview-metrics span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weather-overview-hours { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 18px 0 14px; padding: 0; list-style: none; }.weather-overview-hours li { min-width: 0; display: grid; justify-items: center; gap: 5px; padding: 10px 4px; border: 1px solid rgba(255,255,255,.1); border-radius: 11px; background: rgba(255,255,255,.045); }.weather-overview-hours time { color: rgba(255,255,255,.5); font-size: 9px; }.weather-overview-hours [role="img"] { font-size: 17px; }.weather-overview-hours strong { font-size: 11px; font-weight: 650; white-space: nowrap; }
+.weather-overview-card [role="status"], .weather-overview-card [role="alert"] { margin-top: 12px; font-size: 11px; }.weather-overview-card [role="status"] { color: rgba(255,255,255,.62); }.weather-overview-card [role="alert"] { color: #f0cf84; }
 .bookmark-dialog { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(5,4,12,.68); backdrop-filter: blur(8px); }
 .bookmark-dialog form { width: min(430px,100%); padding: 26px; border: 1px solid rgba(255,255,255,.18); border-radius: 20px; background: #201c32; box-shadow: 0 28px 80px #05030a99; }
 .bookmark-dialog h2 { margin: 0 0 20px; } .bookmark-dialog label { display: grid; gap: 7px; margin: 13px 0; font-size: 12px; color: rgba(255,255,255,.72); }
@@ -161,6 +169,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .state-shell { min-height: 100vh; display: grid; place-items: center; background: #181529; color: #f5f2fb; }.state-shell section { text-align: center; }
 @media (max-width: 980px) {
   .workspace { grid-template-columns: 1fr; width: min(720px, 100%); margin-top: clamp(44px, 7vh, 72px); }
+  .dashboard-column { width: 100%; }
   .mood-card { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
   .mood-card hr { display: none; }
   .mood-card > p:last-of-type, .mood-card dl { grid-column: 2; }
@@ -172,6 +181,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .mood-card { display: block; }
   .command-area h1 { font-size: 42px; } .bookmark-collection { grid-template-columns: repeat(2,minmax(0,1fr)); }.date-line { margin-bottom: 20px; }
 }
-@media (max-width: 430px) { .app-shell { padding-left: 10px; padding-right: 10px; }.topbar { gap: 4px; }.brand { font-size: 12px; letter-spacing: .1em; }.top-actions { gap: 4px; }.summary-button { padding: 0 7px; }.bookmark-collection { grid-template-columns: 1fr 1fr; } [data-bookmark-id] { min-height: 105px; }.command-area > form { padding-left: 17px; }.command-area > form::before { display: none; } }
+@media (max-width: 430px) { .app-shell { padding-left: 10px; padding-right: 10px; }.topbar { gap: 4px; }.brand { font-size: 12px; letter-spacing: .1em; }.top-actions { gap: 4px; }.summary-button { padding: 0 7px; }.bookmark-collection { grid-template-columns: 1fr 1fr; } [data-bookmark-id] { min-height: 105px; }.command-area > form { padding-left: 17px; }.command-area > form::before { display: none; }.dashboard-column { gap: 12px; }.weather-overview-card { padding: 17px; }.weather-overview-header { gap: 6px; }.weather-overview-metrics { gap: 6px 8px; }.weather-overview-hours { gap: 6px; }.weather-overview-hours li { padding: 8px 2px; } }
 @media (max-width: 430px) { .drawer { padding: 20px; }.bookmark-manager-toolbar, .bookmark-manager-batch { grid-template-columns: 1fr; }.bookmark-manager-batch button { width: 100%; }.bookmark-manager-heading { align-items: start; }.bookmark-manager-heading > span { padding-top: 4px; white-space: nowrap; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

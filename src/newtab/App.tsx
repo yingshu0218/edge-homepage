@@ -17,6 +17,7 @@ import { TimeDrawer } from '../features/time/TimeDrawer';
 import { formatClock } from '../features/time/timeFormat';
 import { useLocalClock } from '../features/time/useLocalClock';
 import { WeatherDrawer } from '../features/weather/WeatherDrawer';
+import { WeatherOverviewCard } from '../features/weather/WeatherOverviewCard';
 import { useWeather } from '../features/weather/useWeather';
 import type { ReverseGeocodeClient, WeatherClient } from '../features/weather/types';
 import { convertTemperature, describeWeatherCode } from '../features/weather/weatherCodes';
@@ -223,7 +224,15 @@ export function App({ services }: { services: AppServices }) {
         <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} onViewAll={(trigger) => openDrawer('bookmarks', trigger)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
         <div className="group-rail"><GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} /><button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button></div>
       </section>
-      <aside className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{(backgroundFallback || backgroundError) && <p role="status" aria-label="背景回退提示">{backgroundError ? (snapshot.settings.useCustomBackground ? `自定义背景读取失败：${backgroundError}，已回退到内置主题。` : `本地背景读取失败：${backgroundError}，启动页仍可使用。`) : '自定义背景仅保存在原设备，已回退到内置主题。'}</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</aside>
+      <aside className="dashboard-column" aria-label="启动页概览">
+        <section className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{(backgroundFallback || backgroundError) && <p role="status" aria-label="背景回退提示">{backgroundError ? (snapshot.settings.useCustomBackground ? `自定义背景读取失败：${backgroundError}，已回退到内置主题。` : `本地背景读取失败：${backgroundError}，启动页仍可使用。`) : '自定义背景仅保存在原设备，已回退到内置主题。'}</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</section>
+        <WeatherOverviewCard
+          state={weather.state}
+          unit={snapshot.settings.temperatureUnit}
+          configuredLocation={snapshot.settings.weatherLocation}
+          onOpen={(trigger) => openDrawer('weather', trigger)}
+        />
+      </aside>
     </div>
     <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
     {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawerLabel(drawer)} onKeyDown={handleDrawerKeyDown}><header><h2>{drawerLabel(drawer)}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawerLabel(drawer)}`} onClick={() => setDrawer(null)}>×</button></header>
