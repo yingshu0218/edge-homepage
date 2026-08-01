@@ -10,4 +10,11 @@ describe('extension weather permissions', () => {
       'https://api.bigdatacloud.net/*',
     ]);
   });
+
+  it('uses the browser favicon API without broad website host permissions', async () => {
+    const manifest = JSON.parse(await readFile('public/manifest.json', 'utf8'));
+    expect(manifest.permissions).toContain('favicon');
+    expect(manifest.host_permissions).not.toContain('<all_urls>');
+    expect(manifest.host_permissions).not.toContain('https://*/*');
+  });
 });

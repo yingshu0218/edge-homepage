@@ -1,36 +1,23 @@
-import { openDB } from 'idb';
+import { BACKGROUND_STORE_NAME, openAssetDatabase } from './assetDatabase';
+import type { OpenAssetDatabase } from './types';
 
-import type { BackgroundDatabase, OpenBackgroundDatabase } from './types';
-
-const DATABASE_NAME = 'day-start-assets';
-const DATABASE_VERSION = 1;
-const STORE_NAME = 'assets';
 const BACKGROUND_KEY = 'custom-background';
 
-const openBackgroundDatabase: OpenBackgroundDatabase = async () =>
-  openDB(DATABASE_NAME, DATABASE_VERSION, {
-    upgrade(database) {
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        database.createObjectStore(STORE_NAME);
-      }
-    },
-  }) as Promise<BackgroundDatabase>;
-
 export class BackgroundStore {
-  constructor(private readonly openDatabase = openBackgroundDatabase) {}
+  constructor(private readonly openDatabase: OpenAssetDatabase = openAssetDatabase) {}
 
   async put(blob: Blob): Promise<void> {
     const database = await this.openDatabase();
-    await database.put(STORE_NAME, blob, BACKGROUND_KEY);
+    await database.put(BACKGROUND_STORE_NAME, blob, BACKGROUND_KEY);
   }
 
   async get(): Promise<Blob | undefined> {
     const database = await this.openDatabase();
-    return database.get(STORE_NAME, BACKGROUND_KEY);
+    return database.get(BACKGROUND_STORE_NAME, BACKGROUND_KEY) as Promise<Blob | undefined>;
   }
 
   async clear(): Promise<void> {
     const database = await this.openDatabase();
-    await database.delete(STORE_NAME, BACKGROUND_KEY);
+    await database.delete(BACKGROUND_STORE_NAME, BACKGROUND_KEY);
   }
 }

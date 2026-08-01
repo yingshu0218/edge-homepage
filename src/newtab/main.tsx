@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { BackgroundStore } from '../storage/backgroundStore';
+import { faviconCache } from '../features/bookmarks/bookmarkIconLoader';
 import { chromeLocalStorage } from '../storage/chromeApi';
 import { SnapshotRepository } from '../storage/snapshotRepository';
 import { ChromeWeatherCache } from '../features/weather/weatherCache';
@@ -18,6 +19,7 @@ const services: AppServices = {
   weather: createOpenMeteoClient(),
   reverseGeocoder: createBigDataCloudReverseGeocodeClient(),
   weatherCache: new ChromeWeatherCache(chromeLocalStorage),
+  faviconCache,
   geolocation: navigator.geolocation,
   navigate(destination) {
     window.location.assign(destination);

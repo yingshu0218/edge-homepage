@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot, Bookmark } from '../domain/models';
 import { BookmarkDialog, type BookmarkDialogValue } from '../features/bookmarks/BookmarkDialog';
+import type { FaviconCache } from '../features/bookmarks/faviconCache';
 import { BookmarkGrid } from '../features/bookmarks/BookmarkGrid';
 import { BookmarkManagerDrawer } from '../features/bookmarks/BookmarkManagerDrawer';
 import { BookmarkSortDrawer } from '../features/bookmarks/BookmarkSortDrawer';
@@ -33,6 +34,7 @@ export type AppServices = {
   weather: WeatherClient;
   reverseGeocoder: ReverseGeocodeClient;
   weatherCache: WeatherCacheStore;
+  faviconCache?: Pick<FaviconCache, 'clear'>;
   geolocation?: Pick<Geolocation, 'getCurrentPosition'>;
   navigate(destination: string): void;
   download(blob: Blob, filename: string): void;
@@ -190,7 +192,15 @@ export function App({ services }: { services: AppServices }) {
     } else await persist(mergeImported(snapshot, imported));
   };
   const reset = async () => {
-    try { await Promise.all([services.backgrounds.clear(), services.weatherCache.clear()]); setCustomBackground(undefined); await persist(createDefaultSnapshot()); }
+    try {
+      await Promise.all([
+        services.backgrounds.clear(),
+        services.weatherCache.clear(),
+        services.faviconCache?.clear(),
+      ]);
+      setCustomBackground(undefined);
+      await persist(createDefaultSnapshot());
+    }
     catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); }
   };
   const weatherSummary = weather.state.kind === 'ready'

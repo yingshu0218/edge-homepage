@@ -8,14 +8,18 @@ function fakeBackgroundDatabase(): BackgroundDatabase {
 
   return {
     async put(_storeName, value, key) {
-      const bytes = await new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = () => reject(reader.error); reader.readAsArrayBuffer(value); });
-      values.set(key, new Blob([bytes], { type: value.type }));
+      const blob = value as Blob;
+      const bytes = await new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = () => reject(reader.error); reader.readAsArrayBuffer(blob); });
+      values.set(key, new Blob([bytes], { type: blob.type }));
     },
     async get(_storeName, key) {
       return values.get(key);
     },
     async delete(_storeName, key) {
       values.delete(key);
+    },
+    async clear() {
+      values.clear();
     },
   };
 }

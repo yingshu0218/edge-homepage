@@ -202,12 +202,15 @@ describe('new tab application', () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     const adapter: ChromeStorageArea = { get: vi.fn().mockResolvedValue({}), set: vi.fn().mockResolvedValue(undefined), remove };
     services.weatherCache = new ChromeWeatherCache(adapter);
+    const clearFavicons = vi.fn().mockResolvedValue(undefined);
+    services.faviconCache = { clear: clearFavicons };
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<App services={services} />);
     await screen.findByText('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.click(screen.getByRole('button', { name: '重置全部数据' }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith('weather:forecast-cache'));
+    expect(clearFavicons).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the minimum-width topbar controls structurally available for compact styling', async () => {
