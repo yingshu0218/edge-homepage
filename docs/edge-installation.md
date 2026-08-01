@@ -33,9 +33,12 @@ npm run build
 | `storage`、`unlimitedStorage` | 在当前设备保存 Day Start 的书签、分组、设置和天气缓存。 |
 | `geolocation` | 仅在用户点击“使用当前位置”时调用浏览器定位，并由 Edge 显示授权提示。拒绝后仍可搜索城市。 |
 | `https://geocoding-api.open-meteo.com/*` | 用户输入城市名称时查找城市。 |
-| `https://api.open-meteo.com/*` | 为已选择的城市获取天气预报，或在用户手动刷新时更新。 |
+| `https://api.open-meteo.com/*` | 为已选择的城市获取天气预报，或在用户手动刷新时更新；Open-Meteo 会收到用于天气查询的坐标。 |
+| `https://api.bigdatacloud.net/*` | 仅在点击“使用当前位置”并取得当前位置后，使用当前坐标解析地点。 |
 
-Open-Meteo 是清单中唯一声明的 API 主机权限。Day Start 不请求书签、标签页或账户访问权限，也不使用浏览器配置文件的云端存储。书签卡片还可能访问书签原始来源的 `/favicon.ico`（例如 `https://<bookmark-origin>/favicon.ico`）来显示图标；请求失败时在本地回退为首字母图标。
+手动搜索城市时，Open-Meteo 会收到城市查询；只有点击“使用当前位置”后，Edge 才会显示定位授权请求，拒绝后仍可搜索城市。BigDataCloud 仅在该操作取得当前位置后收到当前坐标；BigDataCloud 说明其免费客户端端点会观察请求 IP 和当前坐标，并使用匿名聚合的 IP 与坐标配对来改进 IP 地理定位。概览卡片页脚会标明当前使用的数据来源。
+
+Day Start 不会持续追踪位置，也不保存位置历史；不使用 API 密钥、分析、广告或账户，不请求书签、标签页或账户访问权限，也不使用浏览器配置文件的云端存储。重新加载已解压缩的扩展后，Edge 可能会提示确认新增的 BigDataCloud 主机权限。书签卡片还可能访问书签原始来源的 `/favicon.ico`（例如 `https://<bookmark-origin>/favicon.ico`）来显示图标；请求失败时在本地回退为首字母图标。
 
 ## 4. 单设备功能验收
 
