@@ -12,6 +12,9 @@ body { overflow-x: hidden; }
 [data-appearance="light"] .local-data-label,[data-appearance="light"] .summary-button,[data-appearance="light"] .icon-button,[data-appearance="light"] [data-bookmark-id],[data-appearance="light"] .mood-card,[data-appearance="light"] .weather-overview-card { border-color: rgba(21,38,58,.16); background: rgba(255,255,255,.52); color: #182333; }
 [data-appearance="light"] [data-bookmark-id] small,[data-appearance="light"] .date-line,[data-appearance="light"] .section-heading > div,[data-appearance="light"] .group-rail button,[data-appearance="light"] .weather-overview-eyebrow,[data-appearance="light"] .weather-overview-metrics,[data-appearance="light"] .weather-overview-source { color: rgba(24,35,51,.62); }
 [data-appearance="light"] .weather-overview-hours li { border-color: rgba(21,38,58,.12); background: rgba(255,255,255,.42); }
+[data-appearance="light"] .weather-overview-hours time { color: rgba(24,35,51,.62); }
+[data-appearance="light"] .weather-overview-card [role="status"] { color: rgba(24,35,51,.68); }
+[data-appearance="light"] .weather-overview-card [role="alert"] { color: #9a3412; }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--theme-accent-color, #8ee7d0); outline-offset: 3px; }

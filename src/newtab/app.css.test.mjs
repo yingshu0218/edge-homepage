@@ -22,6 +22,12 @@ describe('weather overview layout CSS', () => {
     expect(css).toMatch(/\.weather-overview-card\s*\{[^}]*width:\s*100%[^}]*min-height:\s*310px/);
     expect(css).toMatch(/@media\s*\(max-width:\s*980px\)[\s\S]*\.workspace\s*\{[^}]*grid-template-columns:\s*1fr/);
   });
+
+  it('keeps hourly and state text legible on the light glass card', () => {
+    expect(css).toContain('[data-appearance="light"] .weather-overview-hours time { color: rgba(24,35,51,.62); }');
+    expect(css).toContain('[data-appearance="light"] .weather-overview-card [role="status"] { color: rgba(24,35,51,.68); }');
+    expect(css).toContain('[data-appearance="light"] .weather-overview-card [role="alert"] { color: #9a3412; }');
+  });
 });
 
 describe('drawer palette CSS', () => {
