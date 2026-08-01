@@ -30,6 +30,15 @@ describe('weather overview layout CSS', () => {
   });
 });
 
+describe('wide 16:9 desktop density CSS', () => {
+  it('uses the available width for more bookmarks while preserving smaller breakpoints', () => {
+    expect(css).toMatch(/@media \(min-width: 1280px\) and \(min-aspect-ratio: 16\/10\)/);
+    expect(css).toMatch(/@media \(min-width: 1280px\) and \(min-aspect-ratio: 16\/10\)[\s\S]*?\.workspace \{[^}]*width: min\(1280px, 100%\)[^}]*grid-template-columns: minmax\(0, 1fr\) 320px/);
+    expect(css).toMatch(/@media \(min-width: 1280px\) and \(min-aspect-ratio: 16\/10\)[\s\S]*?\.bookmark-collection \{ grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.bookmark-collection \{ grid-template-columns: repeat\(2,minmax\(0,1fr\)\)/);
+  });
+});
+
 describe('drawer palette CSS', () => {
   it('keeps every drawer on an explicit dark palette in light appearance', () => {
     expect(css).toMatch(/\.drawer \{[^}]*--drawer-text: #f5f2fb;[^}]*--drawer-muted: rgba\(245,242,251,\.66\);[^}]*background: #191529;[^}]*color: var\(--drawer-text\);[^}]*color-scheme: dark;/);
