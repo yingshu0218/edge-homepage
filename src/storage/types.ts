@@ -18,10 +18,17 @@ export interface WeatherCacheStore {
   clear(): Promise<void>;
 }
 
-export type BackgroundDatabase = {
-  put(storeName: string, value: Blob, key: string): Promise<unknown>;
-  get(storeName: string, key: string): Promise<Blob | undefined>;
+export type AssetDatabase = {
+  objectStoreNames?: { contains(name: string): boolean };
+  createObjectStore?(name: string): unknown;
+  put(storeName: string, value: unknown, key: string): Promise<unknown>;
+  get(storeName: string, key: string): Promise<unknown>;
+  getAll?(storeName: string): Promise<unknown[]>;
+  getAllKeys?(storeName: string): Promise<unknown[]>;
   delete(storeName: string, key: string): Promise<unknown>;
+  clear(storeName: string): Promise<unknown>;
 };
 
-export type OpenBackgroundDatabase = () => Promise<BackgroundDatabase>;
+export type OpenAssetDatabase = () => Promise<AssetDatabase>;
+export type BackgroundDatabase = AssetDatabase;
+export type OpenBackgroundDatabase = OpenAssetDatabase;

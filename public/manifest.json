@@ -3,7 +3,7 @@
   "name": "Day Start",
   "description": "一个专注、可定制并以本地数据为主的新标签页。",
   "version": "0.1.0",
-  "permissions": ["storage", "unlimitedStorage", "geolocation"],
+  "permissions": ["storage", "unlimitedStorage", "geolocation", "favicon"],
   "host_permissions": [
     "https://geocoding-api.open-meteo.com/*",
     "https://api.open-meteo.com/*",
