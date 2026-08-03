@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { loadBookmarkIcon, type BookmarkIconResult } from './bookmarkIconLoader';
+import { browserFaviconUrl, loadBookmarkIcon, type BookmarkIconResult } from './bookmarkIconLoader';
 
 const ICON_COLORS = ['#5b8def', '#8b6fe8', '#df6b8b', '#e28a45', '#3ba58c', '#4b9bc2', '#9a7b55'];
 const createBlobUrl = (blob: Blob) => URL.createObjectURL(blob);
@@ -21,7 +21,8 @@ export function BookmarkIcon({
   loadIcon?: (url: string, options?: { onCached?: (blob: Blob) => void }) => Promise<BookmarkIconResult>;
   createObjectUrl?: (blob: Blob) => string;
 }) {
-  const [source, setSource] = useState<string>();
+  const browserSource = browserFaviconUrl(url);
+  const [source, setSource] = useState<string | undefined>(browserSource);
   let hostname = title;
   try { hostname = new URL(url).hostname; } catch { /* use title */ }
   const initial = title.trim().charAt(0).toLocaleUpperCase() || '?';
@@ -30,7 +31,7 @@ export function BookmarkIcon({
     let active = true;
     let objectUrl: string | undefined;
     let displayedBlob: Blob | undefined;
-    setSource(undefined);
+    setSource(browserSource);
     const showBlob = (blob: Blob) => {
       if (!active || blob === displayedBlob) return;
       if (objectUrl && URL.revokeObjectURL) URL.revokeObjectURL(objectUrl);
@@ -48,7 +49,7 @@ export function BookmarkIcon({
       active = false;
       if (objectUrl && URL.revokeObjectURL) URL.revokeObjectURL(objectUrl);
     };
-  }, [createObjectUrl, loadIcon, url]);
+  }, [browserSource, createObjectUrl, loadIcon, url]);
 
   return <span className="bookmark-icon" style={{ backgroundColor: iconColor(hostname) }}>
     {source ? <img src={source} alt={`${title.trim()} 图标`} onError={() => setSource(undefined)} /> : <b aria-hidden="true">{initial}</b>}

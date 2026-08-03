@@ -30,9 +30,12 @@ function isGroup(value: unknown): value is BookmarkGroup {
 }
 
 function isBookmark(value: unknown): value is Bookmark {
-  return isObject(value) && exactKeys(value, ['id', 'title', 'url', 'groupId', 'order', 'createdAt', 'updatedAt'], ['deletedAt'])
+  return isObject(value) && exactKeys(value, ['id', 'title', 'url', 'groupId', 'order', 'createdAt', 'updatedAt'], ['deletedAt', 'totalOpenCount', 'recentOpenTimestamps'])
     && nonEmpty(value.id) && nonEmpty(value.title) && safeHttpUrl(value.url) && nonEmpty(value.groupId) && order(value.order)
-    && timestamp(value.createdAt) && timestamp(value.updatedAt) && (value.deletedAt === undefined || timestamp(value.deletedAt));
+    && timestamp(value.createdAt) && timestamp(value.updatedAt)
+    && (value.totalOpenCount === undefined || order(value.totalOpenCount))
+    && (value.recentOpenTimestamps === undefined || Array.isArray(value.recentOpenTimestamps) && value.recentOpenTimestamps.every(timestamp))
+    && (value.deletedAt === undefined || timestamp(value.deletedAt));
 }
 
 function hasBaseSettings(value: Record<string, unknown>): boolean {

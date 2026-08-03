@@ -5,11 +5,12 @@ import type { AppSnapshot, Bookmark } from '../domain/models';
 import { BookmarkDialog, type BookmarkDialogValue } from '../features/bookmarks/BookmarkDialog';
 import type { FaviconCache } from '../features/bookmarks/faviconCache';
 import { BookmarkGrid } from '../features/bookmarks/BookmarkGrid';
+import { loadBookmarkIcon } from '../features/bookmarks/bookmarkIconLoader';
 import { BookmarkManagerDrawer } from '../features/bookmarks/BookmarkManagerDrawer';
 import { BookmarkSortDrawer } from '../features/bookmarks/BookmarkSortDrawer';
 import { GroupManager } from '../features/bookmarks/GroupManager';
 import { GroupTabs } from '../features/bookmarks/GroupTabs';
-import { addBookmark, addGroup, deleteBookmark, deleteBookmarks, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, moveBookmarks, reorderGroups } from '../features/bookmarks/bookmarkActions';
+import { addBookmark, addGroup, deleteBookmark, deleteBookmarks, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, moveBookmarks, recordBookmarkOpen, reorderGroups } from '../features/bookmarks/bookmarkActions';
 import { SearchBox } from '../features/search/SearchBox';
 import { SettingsPanel, type ImportMode } from '../features/settings/SettingsPanel';
 import { ThemePicker } from '../features/themes/ThemePicker';
@@ -24,12 +25,16 @@ import type { ReverseGeocodeClient, WeatherClient } from '../features/weather/ty
 import { convertTemperature, describeWeatherCode } from '../features/weather/weatherCodes';
 import { exportSnapshot, parseSnapshot } from '../storage/transfer';
 import type { SnapshotStorage, WeatherCacheStore } from '../storage/types';
+import { mergeSnapshots } from '../sync/edgeSyncProvider';
+import { SyncStatus } from '../sync/SyncStatus';
+import type { SyncProvider, SyncState } from '../sync/types';
 import './app.css';
 
 type Backgrounds = { get(): Promise<Blob | undefined>; put(blob: Blob): Promise<void>; clear(): Promise<void> };
 
 export type AppServices = {
   repository: SnapshotStorage;
+  sync?: SyncProvider;
   backgrounds: Backgrounds;
   weather: WeatherClient;
   reverseGeocoder: ReverseGeocodeClient;
@@ -88,6 +93,7 @@ export function App({ services }: { services: AppServices }) {
   const [customBackground, setCustomBackground] = useState<Blob>();
   const [error, setError] = useState<string>();
   const [saveError, setSaveError] = useState<string>();
+  const [syncState, setSyncState] = useState<SyncState>({ kind: 'local' });
   const [backgroundError, setBackgroundError] = useState<string>();
   const [backgroundLoaded, setBackgroundLoaded] = useState(false);
   const [backgroundFallback, setBackgroundFallback] = useState(false);
@@ -107,9 +113,13 @@ export function App({ services }: { services: AppServices }) {
   const drawerTriggerRef = useRef<HTMLButtonElement | null>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const remoteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const latestSnapshotRef = useRef<AppSnapshot | undefined>(undefined);
   const latestSaveRef = useRef(0);
+  const syncStartedRef = useRef(false);
 
   const acceptSnapshot = useCallback((next: AppSnapshot) => {
+    latestSnapshotRef.current = next;
     setSnapshot(next);
     setActiveGroupId((current) => next.groups.some((group) => group.id === current && !group.deletedAt)
       ? current : (next.groups.find((group) => !group.deletedAt)?.id ?? ''));
@@ -153,9 +163,68 @@ export function App({ services }: { services: AppServices }) {
     setSaveError(undefined);
     const write = saveQueueRef.current.catch(() => undefined).then(() => services.repository.save(next));
     saveQueueRef.current = write.catch(() => undefined);
-    try { await write; if (latestSaveRef.current === version) setSaveError(undefined); }
-    catch (cause) { if (latestSaveRef.current === version) setSaveError(cause instanceof Error ? cause.message : String(cause)); }
-  }, [acceptSnapshot, services.repository]);
+    if (services.sync) setSyncState({ kind: 'pending' });
+    try {
+      await write;
+      if (latestSaveRef.current === version) setSaveError(undefined);
+    }
+    catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (latestSaveRef.current === version) {
+        setSaveError(message);
+        if (services.sync) setSyncState({ kind: 'error', message, localSaved: false });
+      }
+      return;
+    }
+    if (!services.sync) return;
+    try {
+      const result = await services.sync.push(next);
+      if (latestSaveRef.current === version) setSyncState(result);
+    }
+    catch (cause) {
+      if (latestSaveRef.current === version) {
+        setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: true });
+      }
+    }
+  }, [acceptSnapshot, services.repository, services.sync]);
+
+  useEffect(() => {
+    if (!snapshot || !services.sync || syncStartedRef.current) return;
+    syncStartedRef.current = true;
+    setSyncState({ kind: 'pending' });
+    void services.sync.pull()
+      .then((remote) => {
+        const local = latestSnapshotRef.current ?? snapshot;
+        return persist(remote ? mergeSnapshots(local, remote, now()) : local);
+      })
+      .catch((cause) => setSyncState({
+        kind: 'error',
+        message: cause instanceof Error ? cause.message : String(cause),
+        localSaved: true,
+      }));
+  }, [now, persist, services.sync, snapshot]);
+
+  useEffect(() => {
+    if (!services.sync) return;
+    return services.sync.subscribe(() => {
+      remoteQueueRef.current = remoteQueueRef.current.catch(() => undefined).then(async () => {
+        try {
+          const remote = await services.sync!.pull();
+          const local = latestSnapshotRef.current;
+          if (!remote || !local) return;
+          const merged = mergeSnapshots(local, remote, now());
+          if (JSON.stringify(merged) !== JSON.stringify(local)) await persist(merged);
+        }
+        catch (cause) {
+          setSyncState({
+            kind: 'error',
+            message: cause instanceof Error ? cause.message : String(cause),
+            localSaved: true,
+          });
+        }
+      });
+    });
+  }, [now, persist, services.sync]);
   const updateSettings = useCallback((changes: Partial<AppSnapshot['settings']>) => {
     if (snapshot) void persist({ ...snapshot, settings: { ...snapshot.settings, ...changes, updatedAt: now() } });
   }, [now, persist, snapshot]);
@@ -182,7 +251,7 @@ export function App({ services }: { services: AppServices }) {
   const activeGroup = activeGroupId || snapshot.groups.find((group) => !group.deletedAt)?.id || '';
   const saveBookmark = (value: BookmarkDialogValue) => {
     const next = editing ? editBookmark(snapshot, editing.id, value, now()) : addBookmark(snapshot, { ...value, id: createId(), now: now() });
-    setDialogOpen(false); setEditing(undefined); void persist(next);
+    setDialogOpen(false); setEditing(undefined); void persist(next); void loadBookmarkIcon(value.url);
   };
   const importData = async (text: string, mode: ImportMode) => {
     const imported = parseSnapshot(text);
@@ -219,7 +288,7 @@ export function App({ services }: { services: AppServices }) {
     <header className="topbar">
       <a className="brand" href="index.html" aria-label="Day Start 首页">DAY<span>/</span>START</a>
       <nav className="top-actions" aria-label="启动页操作">
-        <span className="local-data-label">数据保存在本机</span>
+        <SyncStatus className="local-data-label" state={syncState} />
         <button ref={timeButtonRef} className="summary-button clock-summary" type="button" aria-label={`时间 ${clockText}`} onClick={() => openDrawer('time', timeButtonRef.current)}><span className="clock-summary-primary">{clockPrimary}</span>{clockSeconds && <span className="clock-summary-seconds">{clockSeconds}</span>}</button>
         <button ref={weatherButtonRef} className="summary-button weather-summary" type="button" aria-label={weatherSummary ? `天气 ${weatherSummary.icon} ${weatherSummary.label} · ${weatherSummary.temperature} · ${weatherSummary.location}` : '天气 设置天气'} onClick={() => openDrawer('weather', weatherButtonRef.current)}>{weatherSummary ? <><span className="weather-summary-icon" aria-hidden="true">{weatherSummary.icon}</span><span className="weather-summary-temperature">{weatherSummary.temperature}</span><span className="weather-summary-location">{weatherSummary.location}</span></> : '设置天气'}</button>
         <button ref={themeButtonRef} className="icon-button" type="button" aria-label="主题" onClick={() => openDrawer('theme', themeButtonRef.current)}>◐</button>
@@ -231,11 +300,11 @@ export function App({ services }: { services: AppServices }) {
         <h1>今天去哪里？</h1><p className="date-line">{dateFormatter.format(currentTime)} · {formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}</p>
         <SearchBox searchTemplate={snapshot.settings.searchTemplate} navigate={services.navigate} placeholder="搜索书签、输入网址或执行命令" />
         <div className="section-heading"><strong>置顶</strong><div><button ref={bookmarksButtonRef} type="button" className="sort-manager-button" aria-label="管理书签" onClick={() => openDrawer('bookmarks', bookmarksButtonRef.current)}>管理书签</button><button ref={sortButtonRef} type="button" className="sort-manager-button" onClick={() => openDrawer('sort', sortButtonRef.current)}>管理排序</button><button ref={addButtonRef} type="button" aria-label="添加书签" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>＋ 添加</button></div></div>
-        <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} onViewAll={(trigger) => openDrawer('bookmarks', trigger)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
+        <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} now={now()} onOpen={(bookmark) => void persist(recordBookmarkOpen(snapshot, bookmark.id, now()))} onViewAll={(trigger) => openDrawer('bookmarks', trigger)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
         <div className="group-rail"><GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} /><button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button></div>
       </section>
       <aside className="dashboard-column" aria-label="启动页概览">
-        <section className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>本机</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{(backgroundFallback || backgroundError) && <p role="status" aria-label="背景回退提示">{backgroundError ? (snapshot.settings.useCustomBackground ? `自定义背景读取失败：${backgroundError}，已回退到内置主题。` : `本地背景读取失败：${backgroundError}，启动页仍可使用。`) : '自定义背景仅保存在原设备，已回退到内置主题。'}</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</section>
+        <section className="mood-card"><p>今日氛围</p><h2>专注</h2><blockquote>把复杂留给工具，<br />把清晰留给自己。</blockquote><hr /><p>快速状态</p><dl><div><dt>数据</dt><dd>{services.sync ? '本机 + Edge' : '本机'}</dd></div><div><dt>书签</dt><dd>{bookmarkCount}</dd></div></dl>{(backgroundFallback || backgroundError) && <p role="status" aria-label="背景回退提示">{backgroundError ? (snapshot.settings.useCustomBackground ? `自定义背景读取失败：${backgroundError}，已回退到内置主题。` : `本地背景读取失败：${backgroundError}，启动页仍可使用。`) : '自定义背景仅保存在原设备，已回退到内置主题。'}</p>}{saveError && <p role="status">保存失败：{saveError}</p>}</section>
         <WeatherOverviewCard
           state={weather.state}
           unit={snapshot.settings.temperatureUnit}

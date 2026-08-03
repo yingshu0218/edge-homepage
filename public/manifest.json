@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Day Start",
-  "description": "一个专注、可定制并以本地数据为主的新标签页。",
+  "description": "一个专注、可定制、支持 Edge 跨设备同步的新标签页。",
   "version": "0.1.0",
   "permissions": ["storage", "unlimitedStorage", "geolocation", "favicon"],
   "host_permissions": [

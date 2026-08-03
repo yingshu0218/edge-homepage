@@ -39,6 +39,15 @@ describe('wide 16:9 desktop density CSS', () => {
   });
 });
 
+describe('bookmark card information layout CSS', () => {
+  it('aligns the icon with two text rows and keeps four counters compact', () => {
+    expect(css).toMatch(/\[data-bookmark-id\] a \{[^}]*display: grid;[^}]*grid-template-columns: 34px minmax\(0,1fr\) auto;[^}]*grid-template-rows: 1fr 1fr/);
+    expect(css).toMatch(/\[data-bookmark-id\] \.bookmark-icon \{[^}]*grid-row: 1 \/ 3/);
+    expect(css).toMatch(/\.bookmark-stats \{[^}]*grid-column: 3;[^}]*grid-row: 1 \/ 3;[^}]*grid-template-columns: repeat\(2/);
+    expect(css).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.bookmark-stats \{[^}]*grid-column: 1 \/ -1;[^}]*grid-template-columns: repeat\(4,1fr\)/);
+  });
+});
+
 describe('drawer palette CSS', () => {
   it('keeps every drawer on an explicit dark palette in light appearance', () => {
     expect(css).toMatch(/\.drawer \{[^}]*--drawer-text: #f5f2fb;[^}]*--drawer-muted: rgba\(245,242,251,\.66\);[^}]*background: #191529;[^}]*color: var\(--drawer-text\);[^}]*color-scheme: dark;/);

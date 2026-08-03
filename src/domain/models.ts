@@ -6,6 +6,8 @@ export type Bookmark = {
   order: number;
   createdAt: number;
   updatedAt: number;
+  totalOpenCount?: number;
+  recentOpenTimestamps?: number[];
   deletedAt?: number;
 };
 

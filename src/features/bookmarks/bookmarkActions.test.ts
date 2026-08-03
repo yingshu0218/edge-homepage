@@ -8,11 +8,33 @@ import {
   editBookmark,
   filterBookmarksByGroup,
   moveBookmarks,
+  bookmarkOpenStats,
+  recordBookmarkOpen,
   reorderBookmarks,
   searchBookmarks,
 } from './bookmarkActions';
 
 describe('bookmark actions', () => {
+  it('records startup-page opens and calculates rolling counters', () => {
+    const day = 24 * 60 * 60 * 1_000;
+    const now = 40 * day;
+    let snapshot = createDefaultSnapshot();
+    const events = [now - 31 * day, now - 8 * day, now - 2 * day, now - 12 * 60 * 60 * 1_000, now];
+    for (const timestamp of events) snapshot = recordBookmarkOpen(snapshot, 'github', timestamp);
+
+    const bookmark = snapshot.bookmarks.find(({ id }) => id === 'github')!;
+    expect(bookmarkOpenStats(bookmark, now)).toEqual({ day: 2, week: 3, month: 4, total: 5 });
+    expect(bookmark.recentOpenTimestamps).toEqual(events.slice(1));
+    expect(bookmark.updatedAt).toBe(now);
+  });
+
+  it('does not count missing or deleted bookmarks', () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.bookmarks[0]!.deletedAt = 1;
+    expect(recordBookmarkOpen(snapshot, 'github', 10)).toEqual(snapshot);
+    expect(recordBookmarkOpen(snapshot, 'missing', 10)).toEqual(snapshot);
+  });
+
   it('adds, edits, and soft deletes a bookmark without mutating the snapshot', () => {
     const source = createDefaultSnapshot();
     const added = addBookmark(source, {

@@ -54,6 +54,17 @@ describe('migrateSnapshot', () => {
     expect(migrateSnapshot(snapshot, 'local snapshot')).toEqual(snapshot);
   });
 
+  it('preserves valid bookmark opening statistics', () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.bookmarks[0] = {
+      ...snapshot.bookmarks[0]!,
+      totalOpenCount: 4,
+      recentOpenTimestamps: [10, 20, 30],
+    };
+
+    expect(migrateSnapshot(snapshot, 'local snapshot')).toEqual(snapshot);
+  });
+
   it.each([
     ['an unsupported bookmark display limit', (snapshot: Record<string, unknown>) => {
       (snapshot.settings as Record<string, unknown>).bookmarkDisplayLimit = 10;
@@ -65,6 +76,9 @@ describe('migrateSnapshot', () => {
     }],
     ['an unknown temperature unit', (snapshot: Record<string, unknown>) => {
       (snapshot.settings as Record<string, unknown>).temperatureUnit = 'kelvin';
+    }],
+    ['malformed bookmark opening statistics', (snapshot: Record<string, unknown>) => {
+      ((snapshot.bookmarks as Record<string, unknown>[])[0]!).recentOpenTimestamps = [10, -1];
     }],
   ])('fails closed for %s', (_label, mutate) => {
     const snapshot = createDefaultSnapshot() as unknown as Record<string, unknown>;

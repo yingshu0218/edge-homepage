@@ -1,6 +1,7 @@
 import type { AppSnapshot, Bookmark, BookmarkGroup } from '../../domain/models';
 
 type NewBookmark = Pick<Bookmark, 'id' | 'title' | 'url' | 'groupId'> & { now?: number };
+const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1_000;
 
 function withGroupOrder(bookmarks: Bookmark[], groupId: string, orderedIds: string[], now?: number): Bookmark[] {
   const orders = new Map(orderedIds.map((id, order) => [id, order]));
@@ -83,6 +84,35 @@ export function addBookmark(snapshot: AppSnapshot, input: NewBookmark): AppSnaps
   const existingIds = filterBookmarksByGroup(snapshot, bookmark.groupId).map(({ id }) => id);
   const added = { ...bookmark, order: existingIds.length, createdAt: now, updatedAt: now };
   return { ...snapshot, bookmarks: withGroupOrder([...snapshot.bookmarks, added], bookmark.groupId, [...existingIds, bookmark.id], now) };
+}
+
+export function recordBookmarkOpen(snapshot: AppSnapshot, id: string, now = Date.now()): AppSnapshot {
+  return {
+    ...snapshot,
+    bookmarks: snapshot.bookmarks.map((bookmark) => {
+      if (bookmark.id !== id || bookmark.deletedAt !== undefined) return bookmark;
+      const recentOpenTimestamps = [...(bookmark.recentOpenTimestamps ?? []), now]
+        .filter((timestamp) => timestamp >= now - THIRTY_DAYS && timestamp <= now)
+        .sort((left, right) => left - right);
+      return {
+        ...bookmark,
+        totalOpenCount: (bookmark.totalOpenCount ?? 0) + 1,
+        recentOpenTimestamps,
+        updatedAt: now,
+      };
+    }),
+  };
+}
+
+export function bookmarkOpenStats(bookmark: Bookmark, now = Date.now()) {
+  const timestamps = bookmark.recentOpenTimestamps ?? [];
+  const countSince = (duration: number) => timestamps.filter((timestamp) => timestamp >= now - duration && timestamp <= now).length;
+  return {
+    day: countSince(24 * 60 * 60 * 1_000),
+    week: countSince(7 * 24 * 60 * 60 * 1_000),
+    month: countSince(THIRTY_DAYS),
+    total: bookmark.totalOpenCount ?? 0,
+  };
 }
 
 export function editBookmark(snapshot: AppSnapshot, id: string, changes: Partial<Pick<Bookmark, 'title' | 'url' | 'groupId'>>, now = Date.now()): AppSnapshot {

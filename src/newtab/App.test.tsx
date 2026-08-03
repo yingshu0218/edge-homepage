@@ -9,6 +9,7 @@ import { ChromeWeatherCache } from '../features/weather/weatherCache';
 import { SnapshotRepository } from '../storage/snapshotRepository';
 import type { ChromeStorageArea } from '../storage/types';
 import { exportSnapshot } from '../storage/transfer';
+import type { SyncProvider } from '../sync/types';
 import { App, type AppServices } from './App';
 
 afterEach(cleanup);
@@ -60,6 +61,14 @@ function memoryChromeStorage(): ChromeStorageArea {
   };
 }
 
+function fakeSync(remote: AppSnapshot | null = null): SyncProvider {
+  return {
+    pull: vi.fn().mockResolvedValue(remote),
+    push: vi.fn().mockResolvedValue({ kind: 'synced', at: 1_752_636_060_000 }),
+    subscribe: vi.fn().mockReturnValue(() => undefined),
+  };
+}
+
 describe('new tab application', () => {
   it('shows a loading shell until the local snapshot resolves', async () => {
     let resolve!: (snapshot: AppSnapshot) => void;
@@ -81,6 +90,39 @@ describe('new tab application', () => {
     fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://example.com/docs' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(expect.objectContaining({ bookmarks: expect.arrayContaining([expect.objectContaining({ id: 'docs' })]) })));
+  });
+
+  it('pulls, merges, saves locally, and pushes Edge sync data on startup', async () => {
+    const local = createDefaultSnapshot();
+    const remote = createDefaultSnapshot();
+    remote.bookmarks[0] = { ...remote.bookmarks[0]!, title: 'GitHub from Edge', updatedAt: 100 };
+    const services = fakeServices(local);
+    services.sync = fakeSync(remote);
+
+    render(<App services={services} />);
+
+    expect(await screen.findByText('GitHub from Edge')).toBeInTheDocument();
+    await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ bookmarks: expect.arrayContaining([expect.objectContaining({ title: 'GitHub from Edge' })]) }),
+    ));
+    expect(services.sync.pull).toHaveBeenCalledTimes(1);
+    expect(services.sync.push).toHaveBeenCalledWith(expect.objectContaining({
+      bookmarks: expect.arrayContaining([expect.objectContaining({ title: 'GitHub from Edge' })]),
+    }));
+    expect(await screen.findByText(/已同步/)).toBeInTheDocument();
+  });
+
+  it('keeps local changes usable and reports a non-blocking Edge sync failure', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    const sync = fakeSync();
+    sync.push = vi.fn().mockRejectedValue(new Error('Edge sync unavailable'));
+    services.sync = sync;
+
+    render(<App services={services} />);
+
+    expect(await screen.findByText(/已保存在本机，同步失败：Edge sync unavailable/)).toBeInTheDocument();
+    expect(screen.getByText('GitHub')).toBeInTheDocument();
+    expect(services.repository.save).toHaveBeenCalled();
   });
 
   it('limits a group and opens the full bookmark manager from view all', async () => {
