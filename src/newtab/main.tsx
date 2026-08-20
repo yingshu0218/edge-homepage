@@ -3,9 +3,8 @@ import { createRoot } from 'react-dom/client';
 
 import { BackgroundStore } from '../storage/backgroundStore';
 import { faviconCache } from '../features/bookmarks/bookmarkIconLoader';
-import { chromeLocalStorage, chromeStorageChanges, chromeSyncStorage } from '../storage/chromeApi';
+import { chromeLocalStorage } from '../storage/chromeApi';
 import { SnapshotRepository } from '../storage/snapshotRepository';
-import { EdgeSyncProvider } from '../sync/edgeSyncProvider';
 import { ChromeWeatherCache } from '../features/weather/weatherCache';
 import { createOpenMeteoClient } from '../features/weather/openMeteoClient';
 import { createBigDataCloudReverseGeocodeClient } from '../features/weather/reverseGeocodeClient';
@@ -13,11 +12,9 @@ import { App, type AppServices } from './App';
 
 const repository = new SnapshotRepository(chromeLocalStorage);
 const backgrounds = new BackgroundStore();
-const sync = new EdgeSyncProvider(chromeSyncStorage, chromeStorageChanges);
 
 const services: AppServices = {
   repository,
-  sync,
   backgrounds,
   weather: createOpenMeteoClient(),
   reverseGeocoder: createBigDataCloudReverseGeocodeClient(),

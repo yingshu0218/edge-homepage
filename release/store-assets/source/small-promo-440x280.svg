@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" viewBox="0 0 440 280">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="262" x2="422" y2="18" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#090d20"/><stop offset=".5" stop-color="#28205a"/><stop offset="1" stop-color="#804b91"/>
+    </linearGradient>
+    <radialGradient id="glow"><stop stop-color="#73d5d1" stop-opacity=".48"/><stop offset="1" stop-color="#73d5d1" stop-opacity="0"/></radialGradient>
+    <linearGradient id="iconBg" x1="20" y1="100" x2="100" y2="20"><stop stop-color="#342b69"/><stop offset=".52" stop-color="#7c4788"/><stop offset="1" stop-color="#ecadbd"/></linearGradient>
+  </defs>
+  <rect width="440" height="280" rx="24" fill="url(#bg)"/>
+  <circle cx="390" cy="32" r="170" fill="url(#glow)"/>
+  <path d="M-15 230C86 168 137 253 236 192s142-56 227-9" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="46"/>
+  <g transform="translate(36 38)">
+    <rect width="76" height="76" rx="18" fill="url(#iconBg)"/>
+    <path d="M18 49c6-8 14-11 21-11 9 0 16 4 21 11" fill="none" stroke="#9be1dc" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="38" cy="31" r="9" fill="#fff8e9"/><path d="M38 12v8M18 21l6 6M58 21l-6 6" fill="none" stroke="#fff8e9" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <text x="36" y="150" fill="#fff" font-family="Arial, 'PingFang SC', sans-serif" font-size="28" font-weight="800" letter-spacing="3">DAY / START</text>
+  <text x="36" y="190" fill="#fff" font-family="Arial, 'PingFang SC', sans-serif" font-size="20" font-weight="600">专注，从每个新标签页开始</text>
+  <text x="36" y="224" fill="#d9d9e8" font-family="Arial, 'PingFang SC', sans-serif" font-size="14">书签 · 主题 · 时间 · 天气</text>
+</svg>

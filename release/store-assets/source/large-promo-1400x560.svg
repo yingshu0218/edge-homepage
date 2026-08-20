@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="560" viewBox="0 0 1400 560">
+  <defs>
+    <linearGradient id="bg" x1="40" y1="520" x2="1360" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#070c1d"/><stop offset=".46" stop-color="#201a4d"/><stop offset="1" stop-color="#744483"/>
+    </linearGradient>
+    <radialGradient id="a"><stop stop-color="#78d6d2" stop-opacity=".48"/><stop offset="1" stop-color="#78d6d2" stop-opacity="0"/></radialGradient>
+    <radialGradient id="b"><stop stop-color="#edaebe" stop-opacity=".34"/><stop offset="1" stop-color="#edaebe" stop-opacity="0"/></radialGradient>
+    <linearGradient id="iconBg" x1="20" y1="140" x2="140" y2="20"><stop stop-color="#342b69"/><stop offset=".52" stop-color="#7c4788"/><stop offset="1" stop-color="#ecadbd"/></linearGradient>
+  </defs>
+  <rect width="1400" height="560" rx="28" fill="url(#bg)"/>
+  <circle cx="1170" cy="40" r="430" fill="url(#a)"/><circle cx="825" cy="610" r="440" fill="url(#b)"/>
+  <path d="M-30 486C235 305 386 529 653 364s488-151 810-35" fill="none" stroke="#fff" stroke-opacity=".07" stroke-width="96"/>
+  <g transform="translate(120 92)">
+    <rect width="132" height="132" rx="31" fill="url(#iconBg)"/>
+    <path d="M31 85c12-16 25-22 37-22 16 0 28 7 37 22" fill="none" stroke="#9be1dc" stroke-width="10" stroke-linecap="round"/>
+    <circle cx="66" cy="53" r="16" fill="#fff8e9"/><path d="M66 20v14M31 36l10 10M101 36L91 46" fill="none" stroke="#fff8e9" stroke-width="7" stroke-linecap="round"/>
+  </g>
+  <text x="300" y="162" fill="#fff" font-family="Arial, 'PingFang SC', sans-serif" font-size="58" font-weight="800" letter-spacing="8">DAY / START</text>
+  <text x="120" y="320" fill="#fff" font-family="Arial, 'PingFang SC', sans-serif" font-size="52" font-weight="650">把每个新标签页，变成专注的开始</text>
+  <text x="122" y="390" fill="#dad9e8" font-family="Arial, 'PingFang SC', sans-serif" font-size="27">本地优先的书签、主题、时间与天气工作台</text>
+  <g fill="#fff" fill-opacity=".12" stroke="#fff" stroke-opacity=".16">
+    <rect x="964" y="178" width="286" height="74" rx="20"/><rect x="1010" y="276" width="240" height="74" rx="20"/><rect x="924" y="374" width="326" height="74" rx="20"/>
+  </g>
+  <g fill="#fff" font-family="Arial, 'PingFang SC', sans-serif" font-size="22" font-weight="600">
+    <text x="1000" y="225">常用书签，一眼即达</text><text x="1046" y="323">六套内置主题</text><text x="960" y="421">时间与城市天气概览</text>
+  </g>
+</svg>

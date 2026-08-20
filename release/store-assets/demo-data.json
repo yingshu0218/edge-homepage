@@ -1,0 +1,46 @@
+{
+  "app": "day-start",
+  "exportedAt": "2026-08-20T00:00:00.000Z",
+  "snapshot": {
+    "schemaVersion": 2,
+    "groups": [
+      { "id": "daily", "name": "常用", "order": 0, "updatedAt": 1787184000000 },
+      { "id": "learning", "name": "学习", "order": 1, "updatedAt": 1787184000000 }
+    ],
+    "bookmarks": [
+      { "id": "github", "title": "GitHub", "url": "https://github.com/", "groupId": "daily", "order": 0, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "outlook", "title": "Outlook", "url": "https://outlook.live.com/", "groupId": "daily", "order": 1, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "office", "title": "Microsoft 365", "url": "https://www.microsoft365.com/", "groupId": "daily", "order": 2, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "bing", "title": "Bing", "url": "https://www.bing.com/", "groupId": "daily", "order": 3, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "edge", "title": "Microsoft Edge", "url": "https://www.microsoft.com/edge/", "groupId": "daily", "order": 4, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "openmeteo", "title": "Open-Meteo", "url": "https://open-meteo.com/", "groupId": "daily", "order": 5, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "mdn", "title": "MDN Web Docs", "url": "https://developer.mozilla.org/", "groupId": "learning", "order": 0, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "typescript", "title": "TypeScript", "url": "https://www.typescriptlang.org/docs/", "groupId": "learning", "order": 1, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "react", "title": "React", "url": "https://react.dev/", "groupId": "learning", "order": 2, "createdAt": 1787184000000, "updatedAt": 1787184000000 },
+      { "id": "webdev", "title": "web.dev", "url": "https://web.dev/", "groupId": "learning", "order": 3, "createdAt": 1787184000000, "updatedAt": 1787184000000 }
+    ],
+    "settings": {
+      "searchTemplate": "https://www.google.com/search?q=%s",
+      "themeId": "violet",
+      "appearance": "dark",
+      "overlay": 0.38,
+      "blur": 0,
+      "useCustomBackground": false,
+      "bookmarkDisplayLimit": 8,
+      "clockHour12": false,
+      "clockShowSeconds": false,
+      "clockShowFullDate": true,
+      "temperatureUnit": "celsius",
+      "weatherLocation": {
+        "id": "beijing-demo",
+        "name": "北京市",
+        "admin": "北京市",
+        "country": "中国",
+        "latitude": 39.9042,
+        "longitude": 116.4074,
+        "timezone": "Asia/Shanghai"
+      },
+      "updatedAt": 1787184000000
+    }
+  }
+}
