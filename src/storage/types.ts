@@ -10,6 +10,8 @@ export type ChromeStorageArea = {
 export interface SnapshotStorage {
   load(): Promise<AppSnapshot>;
   save(snapshot: AppSnapshot): Promise<void>;
+  replace?(snapshot: AppSnapshot): Promise<void>;
+  recordOpen?(id: string, now: number): Promise<AppSnapshot>;
 }
 
 export interface WeatherCacheStore {

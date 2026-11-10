@@ -1,6 +1,9 @@
 import { createDefaultSnapshot } from '../../domain/defaults';
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_BOOKMARKS,
+  RECENT_BOOKMARKS,
+  selectBookmarks,
   addBookmark,
   deleteBookmark,
   deleteBookmarks,
@@ -15,6 +18,21 @@ import {
 } from './bookmarkActions';
 
 describe('bookmark actions', () => {
+  it('aggregates groups and ranks recent use by frequency then last open', () => {
+    const snapshot = createDefaultSnapshot();
+    const now = 40 * 86_400_000;
+    snapshot.groups.push({ id: 'other', name: 'Other', order: 1, updatedAt: 0 });
+    snapshot.bookmarkUsage.github = { totalOpenCount: 2, recentOpenTimestamps: [now - 10, now - 5] };
+    snapshot.bookmarks[1] = { ...snapshot.bookmarks[1]!, groupId: 'other' };
+    snapshot.bookmarkUsage.mdn = { totalOpenCount: 2, recentOpenTimestamps: [now - 8, now - 1] };
+    snapshot.bookmarkUsage.stackoverflow = { totalOpenCount: 1, recentOpenTimestamps: [now - 31 * 86_400_000] };
+    snapshot.bookmarks[3] = { ...snapshot.bookmarks[3]!, deletedAt: now };
+    snapshot.bookmarkUsage.npm = { totalOpenCount: 1, recentOpenTimestamps: [now] };
+    expect(selectBookmarks(snapshot, RECENT_BOOKMARKS, now).map(({ id }) => id)).toEqual([snapshot.bookmarks[1]!.id, snapshot.bookmarks[0]!.id]);
+    expect(selectBookmarks(snapshot, ALL_BOOKMARKS, now)).toHaveLength(3);
+    expect(selectBookmarks(createDefaultSnapshot(), RECENT_BOOKMARKS, now)).toEqual([]);
+  });
+
   it('records startup-page opens and calculates rolling counters', () => {
     const day = 24 * 60 * 60 * 1_000;
     const now = 40 * day;
@@ -23,9 +41,9 @@ describe('bookmark actions', () => {
     for (const timestamp of events) snapshot = recordBookmarkOpen(snapshot, 'github', timestamp);
 
     const bookmark = snapshot.bookmarks.find(({ id }) => id === 'github')!;
-    expect(bookmarkOpenStats(bookmark, now)).toEqual({ day: 2, week: 3, month: 4, total: 5 });
-    expect(bookmark.recentOpenTimestamps).toEqual(events.slice(1));
-    expect(bookmark.updatedAt).toBe(now);
+    expect(bookmarkOpenStats(snapshot.bookmarkUsage.github, now)).toEqual({ day: 2, week: 3, month: 4, total: 5 });
+    expect(snapshot.bookmarkUsage.github.recentOpenTimestamps).toEqual(events.slice(1));
+    expect(bookmark.updatedAt).toBe(0);
   });
 
   it('does not count missing or deleted bookmarks', () => {

@@ -9,6 +9,13 @@ const groups = [
 ];
 
 describe('GroupTabs', () => {
+  it('pins recent and all before custom groups, including when no groups exist', () => {
+    const { rerender } = render(<GroupTabs groups={[...groups].reverse()} activeGroupId="view:recent" onSelect={vi.fn()} />);
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['最近常用', '全部', 'Alpha', 'Beta']);
+    rerender(<GroupTabs groups={[]} activeGroupId="view:recent" onSelect={vi.fn()} />);
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['最近常用', '全部']);
+  });
+
   it('uses roving tab stops and arrow-key navigation', () => {
     const select = vi.fn();
     render(<GroupTabs groups={groups} activeGroupId="a" onSelect={select} />);

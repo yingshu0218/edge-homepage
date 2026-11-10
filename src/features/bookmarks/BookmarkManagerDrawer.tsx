@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { AppSnapshot, Bookmark } from '../../domain/models';
 import { BookmarkIcon } from './BookmarkIcon';
-import { filterBookmarksByGroup, searchBookmarks } from './bookmarkActions';
+import { BUILTIN_BOOKMARK_TABS, selectBookmarks, searchBookmarks } from './bookmarkActions';
 
 type Props = {
   snapshot: AppSnapshot;
@@ -18,7 +18,7 @@ export function BookmarkManagerDrawer({ snapshot, groupId, onEdit, onDelete, onM
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const groups = useMemo(() => snapshot.groups.filter(({ deletedAt }) => deletedAt === undefined).sort((left, right) => left.order - right.order), [snapshot.groups]);
-  const bookmarks = useMemo(() => filterBookmarksByGroup(snapshot, groupId), [snapshot, groupId]);
+  const bookmarks = useMemo(() => selectBookmarks(snapshot, groupId), [snapshot, groupId]);
   const visibleBookmarks = useMemo(() => searchBookmarks(snapshot, groupId, query), [snapshot, groupId, query]);
   const destinations = useMemo(() => groups.filter(({ id }) => id !== groupId), [groups, groupId]);
   const [destinationGroupId, setDestinationGroupId] = useState(() => destinations[0]?.id ?? '');
@@ -76,12 +76,12 @@ export function BookmarkManagerDrawer({ snapshot, groupId, onEdit, onDelete, onM
   return (
     <section className="bookmark-manager" aria-label="书签管理内容">
       <div className="bookmark-manager-heading">
-        <div><p>当前分组</p><h3>{group?.name ?? '未命名分组'}</h3></div>
+        <div><p>当前分组</p><h3>{group?.name ?? BUILTIN_BOOKMARK_TABS.find(({ id }) => id === groupId)?.name ?? '未命名分组'}</h3></div>
         <span>{bookmarks.length} 个书签</span>
       </div>
       <div className="bookmark-manager-toolbar">
         <label className="bookmark-manager-search">搜索书签<input type="search" role="searchbox" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="按名称或网址搜索" /></label>
-        <button type="button" className="bookmark-manager-sort" onClick={onOpenSort}>打开排序管理</button>
+        <button disabled={!group} type="button" className="bookmark-manager-sort" onClick={onOpenSort}>打开排序管理</button>
       </div>
 
       <div className="bookmark-manager-select-all">

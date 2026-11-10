@@ -6,6 +6,7 @@ import { migrateSnapshot } from './snapshotValidator';
 function schema1Snapshot() {
   const snapshot = createDefaultSnapshot() as unknown as Record<string, unknown>;
   snapshot.schemaVersion = 1;
+    delete snapshot.bookmarkUsage;
   const settings = { ...(snapshot.settings as Record<string, unknown>) };
   delete settings.bookmarkDisplayLimit;
   delete settings.clockHour12;
@@ -28,10 +29,10 @@ describe('migrateSnapshot', () => {
       clockShowFullDate: true,
       temperatureUnit: 'celsius',
     });
-    expect(migrateSnapshot(v1, 'local snapshot').schemaVersion).toBe(2);
+    expect(migrateSnapshot(v1, 'local snapshot').schemaVersion).toBe(3);
   });
 
-  it('preserves explicit schema-2 local settings and weather location', () => {
+  it('preserves explicit settings and weather location in the current schema', () => {
     const snapshot = createDefaultSnapshot();
     snapshot.settings = {
       ...snapshot.settings,
@@ -56,8 +57,7 @@ describe('migrateSnapshot', () => {
 
   it('preserves valid bookmark opening statistics', () => {
     const snapshot = createDefaultSnapshot();
-    snapshot.bookmarks[0] = {
-      ...snapshot.bookmarks[0]!,
+    snapshot.bookmarkUsage.github = {
       totalOpenCount: 4,
       recentOpenTimestamps: [10, 20, 30],
     };
@@ -78,7 +78,7 @@ describe('migrateSnapshot', () => {
       (snapshot.settings as Record<string, unknown>).temperatureUnit = 'kelvin';
     }],
     ['malformed bookmark opening statistics', (snapshot: Record<string, unknown>) => {
-      ((snapshot.bookmarks as Record<string, unknown>[])[0]!).recentOpenTimestamps = [10, -1];
+      snapshot.bookmarkUsage = { github: { totalOpenCount: 2, recentOpenTimestamps: [10, -1] } };
     }],
   ])('fails closed for %s', (_label, mutate) => {
     const snapshot = createDefaultSnapshot() as unknown as Record<string, unknown>;

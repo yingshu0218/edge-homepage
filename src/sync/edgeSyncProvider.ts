@@ -3,6 +3,7 @@ import { SnapshotCorruptionError, validateSnapshot } from '../domain/snapshotVal
 import type { SyncProvider, SyncResult } from './types';
 
 const ITEM_LIMIT = 8192;
+const ITEM_COUNT_LIMIT = 512;
 const WARNING_THRESHOLD = 90 * 1024;
 const TOTAL_LIMIT = 100 * 1024;
 const TOMBSTONE_TTL = 30 * 24 * 60 * 60 * 1000;
@@ -27,11 +28,14 @@ function isManagedKey(key: string): boolean {
 
 function chunks(snapshot: AppSnapshot): Record<string, unknown> {
   const result: Record<string, unknown> = {
-    meta: { schemaVersion: snapshot.schemaVersion },
+    // Keep the existing Edge wire format, with content only. Usage stays local.
+    meta: { schemaVersion: 2 },
     settings: snapshot.settings,
   };
   snapshot.groups.forEach((group) => { result[`group:${group.id}`] = group; });
-  snapshot.bookmarks.forEach((bookmark) => { result[`bookmark:${bookmark.id}`] = bookmark; });
+  snapshot.bookmarks.forEach(({ id, title, url, groupId, order, createdAt, updatedAt, deletedAt }) => {
+    result[`bookmark:${id}`] = { id, title, url, groupId, order, createdAt, updatedAt, ...(deletedAt === undefined ? {} : { deletedAt }) };
+  });
   return result;
 }
 
@@ -97,13 +101,18 @@ export class EdgeSyncProvider implements SyncProvider {
       const existing = await this.storage.get(null);
       const obsolete = Object.keys(existing).filter((key) => isManagedKey(key) && !(key in items));
       const existingManaged = Object.keys(existing).filter(isManagedKey);
+      const projectedItemCount = Object.keys(existing).length - existingManaged.length + Object.keys(items).length;
+      if (projectedItemCount > ITEM_COUNT_LIMIT) {
+        throw new Error(`MAX_ITEMS: projected ${projectedItemCount} items exceeds ${ITEM_COUNT_LIMIT}`);
+      }
       const [currentBytes, managedBytes] = await Promise.all([
         this.storage.getBytesInUse(null),
         this.storage.getBytesInUse(existingManaged),
       ]);
       const projectedBytes = currentBytes - managedBytes + serializedBytes(items);
       if (projectedBytes > TOTAL_LIMIT) throw new Error(`QUOTA_BYTES: projected ${projectedBytes} bytes exceeds 100 KiB`);
-      await this.storage.set(items);
+      const changed = Object.fromEntries(Object.entries(items).filter(([key, value]) => stableRecord(value as object) !== (existing[key] === undefined ? undefined : stableRecord(existing[key] as object))));
+      if (Object.keys(changed).length > 0) await this.storage.set(changed);
       if (obsolete.length > 0) await this.storage.remove(obsolete);
       completed = true;
       const bytes = await this.storage.getBytesInUse(null);
@@ -203,10 +212,14 @@ export function mergeSnapshots(local: AppSnapshot, remote: AppSnapshot, now = Da
     || (remote.settings.updatedAt === local.settings.updatedAt && stableRecord(remote.settings) > stableRecord(local.settings))
     ? remote.settings : local.settings;
   const merged = normalizeMergedSnapshot({
-    schemaVersion: 2,
+    schemaVersion: 3,
     bookmarks: mergeRecords(local.bookmarks, remote.bookmarks, now),
     groups: mergeRecords(local.groups, remote.groups, now),
     settings,
+    // A legacy remote record can seed usage once. Existing local counters always win;
+    // new Edge payloads have no usage at all and never aggregate across devices.
+    bookmarkUsage: { ...remote.bookmarkUsage, ...local.bookmarkUsage },
   });
-  return validateSnapshot(merged, 'merged snapshot');
+  const ids = new Set(merged.bookmarks.map(({ id }) => id));
+  return validateSnapshot({ ...merged, bookmarkUsage: Object.fromEntries(Object.entries(merged.bookmarkUsage).filter(([id]) => ids.has(id))) }, 'merged snapshot');
 }

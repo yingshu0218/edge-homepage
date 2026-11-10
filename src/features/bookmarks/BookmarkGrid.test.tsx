@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createDefaultSnapshot } from '../../domain/defaults';
@@ -7,6 +7,31 @@ import { BookmarkGrid } from './BookmarkGrid';
 afterEach(cleanup);
 
 describe('BookmarkGrid', () => {
+  it('finishes the local open record before ordinary card navigation', async () => {
+    let finish!: () => void;
+    const recorded = new Promise<void>((resolve) => { finish = resolve; });
+    const onOpen = vi.fn().mockReturnValue(recorded);
+    const navigate = vi.fn();
+    render(<BookmarkGrid snapshot={createDefaultSnapshot()} groupId="development" onOpen={onOpen} navigate={navigate} />);
+    fireEvent.click(screen.getByRole('link', { name: /GitHub/ }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(navigate).not.toHaveBeenCalled();
+    await act(async () => finish());
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('https://github.com/');
+  });
+
+  it('retains native modifier and middle-click behavior while recording each open once', () => {
+    const snapshot = createDefaultSnapshot();
+    snapshot.bookmarks[0]!.url = 'http://localhost:3000/#github';
+    const onOpen = vi.fn();
+    const navigate = vi.fn();
+    render(<BookmarkGrid snapshot={snapshot} groupId="development" onOpen={onOpen} navigate={navigate} />);
+    const link = screen.getByRole('link', { name: /GitHub/ });
+    expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+    expect(fireEvent(link, new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }))).toBe(true);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(navigate).not.toHaveBeenCalled();
+  });
   it('renders plain cards without sorting behavior', () => {
     const snapshot = createDefaultSnapshot();
     render(<BookmarkGrid snapshot={snapshot} groupId={snapshot.groups[0].id} />);
@@ -37,8 +62,7 @@ describe('BookmarkGrid', () => {
 
   it('renders the four bookmark opening counters', () => {
     const snapshot = createDefaultSnapshot();
-    snapshot.bookmarks[0] = {
-      ...snapshot.bookmarks[0]!,
+    snapshot.bookmarkUsage.github = {
       totalOpenCount: 9,
       recentOpenTimestamps: [900, 950, 990],
     };

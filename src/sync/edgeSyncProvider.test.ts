@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot } from '../domain/models';
 import { EdgeSyncProvider, mergeSnapshots } from './edgeSyncProvider';
-import { validateSnapshot } from '../domain/snapshotValidator';
+import { migrateSnapshot, validateSnapshot } from '../domain/snapshotValidator';
 import { SnapshotRepository } from '../storage/snapshotRepository';
-import { reorderBookmarks } from '../features/bookmarks/bookmarkActions';
+import { bookmarkOpenStats, recordBookmarkOpen, reorderBookmarks } from '../features/bookmarks/bookmarkActions';
 
 type ChangeListener = (changes: Record<string, unknown>, areaName: string) => void;
 
@@ -35,6 +35,39 @@ function fakeSync(initial: Record<string, unknown> = {}, notifyWrites = false) {
 
 describe('EdgeSyncProvider', () => {
   afterEach(() => vi.useRealTimers());
+  it('keeps sync bytes and writes constant after thousands of local opens', async () => {
+    const sync = fakeSync();
+    const set = vi.spyOn(sync.area, 'set');
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+    let snapshot = createDefaultSnapshot();
+    await provider.push(snapshot);
+    const before = JSON.stringify(sync.data);
+    for (let index = 0; index < 2_000; index += 1) snapshot = recordBookmarkOpen(snapshot, 'github', 1_700_000_000_000 + index);
+    await provider.push(snapshot);
+    expect(snapshot.bookmarkUsage.github.totalOpenCount).toBe(2_000);
+    expect(snapshot.bookmarkUsage.github.recentOpenTimestamps).toHaveLength(2_000);
+    expect(JSON.stringify(sync.data)).toBe(before);
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(new TextEncoder().encode(JSON.stringify(sync.data['bookmark:github'])).byteLength).toBeLessThan(512);
+    expect(JSON.stringify(sync.data)).not.toMatch(/recentOpenTimestamps|totalOpenCount|bookmarkUsage/);
+  });
+
+  it('reads existing Edge statistics once as a local migration seed and writes content only', async () => {
+    const original = createDefaultSnapshot();
+    const sync = fakeSync({ meta: { schemaVersion: 2 }, settings: original.settings,
+      'group:development': original.groups[0],
+      'bookmark:github': { ...original.bookmarks[0], totalOpenCount: 12, recentOpenTimestamps: [10, 20] },
+    });
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+    const remote = (await provider.pull())!;
+    const migrated = mergeSnapshots(original, remote, 30);
+    expect(migrated.bookmarkUsage.github).toEqual({ totalOpenCount: 12, recentOpenTimestamps: [10, 20] });
+    const opened = recordBookmarkOpen(migrated, 'github', 30);
+    expect(mergeSnapshots(opened, remote, 30).bookmarkUsage.github.totalOpenCount).toBe(13);
+    await provider.push(opened);
+    expect(sync.data['bookmark:github']).toEqual(original.bookmarks[0]);
+    expect((await provider.pull())!.bookmarkUsage).toEqual({});
+  });
   it('chunks snapshots into metadata, settings, groups, and bookmarks', async () => {
     const sync = fakeSync();
     const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
@@ -128,7 +161,7 @@ describe('EdgeSyncProvider', () => {
     });
     const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
     await expect(provider.pull()).resolves.toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       bookmarks: [{ id: 'github' }],
       groups: [{ id: 'development' }],
     });
@@ -151,6 +184,17 @@ describe('EdgeSyncProvider', () => {
     const set = vi.spyOn(sync.area, 'set');
     const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
     await expect(provider.push(createDefaultSnapshot())).rejects.toThrow('QUOTA_BYTES');
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('rejects a projected replacement over 512 items before writing', async () => {
+    const unrelated = Object.fromEntries(Array.from({ length: 510 }, (_, index) => [`unrelated:${index}`, index]));
+    const sync = fakeSync(unrelated);
+    const set = vi.spyOn(sync.area, 'set');
+    const provider = new EdgeSyncProvider(sync.area, sync.changes, { debounceMs: 0 });
+
+    await expect(provider.push(createDefaultSnapshot())).rejects.toThrow('MAX_ITEMS');
+
     expect(set).not.toHaveBeenCalled();
   });
 
@@ -214,6 +258,26 @@ describe('EdgeSyncProvider', () => {
 });
 
 describe('mergeSnapshots', () => {
+  it('preserves newer content edits and local statistics when another device opens a stale bookmark', () => {
+    const local = recordBookmarkOpen(createDefaultSnapshot(), 'github', 100);
+    const remote = createDefaultSnapshot();
+    remote.bookmarks[0] = { ...remote.bookmarks[0]!, title: 'Edited on another device', url: 'https://github.com/new', updatedAt: 20 };
+    remote.bookmarkUsage.github = { totalOpenCount: 99, recentOpenTimestamps: [90] };
+    const merged = mergeSnapshots(local, remote, 100);
+    expect(merged.bookmarks.find(({ id }) => id === 'github')).toMatchObject({ title: 'Edited on another device', updatedAt: 20 });
+    expect(bookmarkOpenStats(merged.bookmarkUsage.github, 100)).toEqual({ day: 1, week: 1, month: 1, total: 1 });
+  });
+
+  it('keeps legacy local statistics when newer legacy content is merged', () => {
+    const { bookmarkUsage: _usage, ...content } = createDefaultSnapshot();
+    const legacy = { ...content, schemaVersion: 2, bookmarks: content.bookmarks.map((bookmark) => ({ ...bookmark, totalOpenCount: 7, recentOpenTimestamps: [10] })) };
+    const local = migrateSnapshot(legacy, 'local');
+    const remote = createDefaultSnapshot();
+    remote.bookmarks[0] = { ...remote.bookmarks[0]!, title: 'New content', updatedAt: 20 };
+    const merged = mergeSnapshots(local, remote, 30);
+    expect(merged.bookmarks.find(({ id }) => id === 'github')!.title).toBe('New content');
+    expect(merged.bookmarkUsage.github.totalOpenCount).toBe(7);
+  });
   it('merges records by updatedAt and settings by newest timestamp', () => {
     const local = createDefaultSnapshot();
     const remote = structuredClone(local);
@@ -255,7 +319,7 @@ describe('mergeSnapshots', () => {
 
     const values: Record<string, unknown> = {};
     const repository = new SnapshotRepository({
-      async get(key) { return typeof key === 'string' && key in values ? { [key]: values[key] } : {}; },
+      async get(keys) { return Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((key): key is string => typeof key === 'string' && key in values).map((key) => [key, values[key]])); },
       async set(items) { Object.assign(values, items); },
     });
     await repository.save(merged);

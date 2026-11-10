@@ -1,4 +1,5 @@
 import { useRef, type KeyboardEvent } from 'react';
+import { BUILTIN_BOOKMARK_TABS } from './bookmarkActions';
 import type { BookmarkGroup } from '../../domain/models';
 
 type Props = {
@@ -8,7 +9,7 @@ type Props = {
 };
 
 export function GroupTabs({ groups, activeGroupId, onSelect }: Props) {
-  const activeGroups = groups.filter(({ deletedAt }) => deletedAt === undefined).sort((a, b) => a.order - b.order);
+  const activeGroups = [...BUILTIN_BOOKMARK_TABS, ...groups.filter(({ deletedAt }) => deletedAt === undefined).sort((a, b) => a.order - b.order)];
   const refs = useRef(new Map<string, HTMLButtonElement>());
   const keyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next = index;

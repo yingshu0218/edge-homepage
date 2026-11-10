@@ -1,5 +1,5 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { AppSnapshot } from '../domain/models';
@@ -12,7 +12,14 @@ import { exportSnapshot } from '../storage/transfer';
 import type { SyncProvider } from '../sync/types';
 import { App, type AppServices } from './App';
 
+beforeEach(() => localStorage.clear());
 afterEach(cleanup);
+
+async function findBookmark(title: string) {
+  fireEvent.click(await screen.findByRole('tab', { name: '全部' }));
+  return screen.findByText(title);
+}
+
 
 const weather: WeatherClient = {
   searchLocations: vi.fn().mockResolvedValue([]),
@@ -69,6 +76,26 @@ function fakeSync(remote: AppSnapshot | null = null): SyncProvider {
   };
 }
 
+function liveSync(initial: AppSnapshot | null = null) {
+  let remote = initial;
+  let listener: (() => void) | undefined;
+  const provider: SyncProvider = {
+    pull: vi.fn().mockImplementation(async () => remote),
+    push: vi.fn().mockResolvedValue({ kind: 'synced', at: 1_752_636_060_000 }),
+    subscribe: vi.fn().mockImplementation((next: () => void) => {
+      listener = next;
+      return () => { if (listener === next) listener = undefined; };
+    }),
+  };
+  return {
+    provider,
+    emit(next: AppSnapshot) {
+      remote = next;
+      listener?.();
+    },
+  };
+}
+
 describe('new tab application', () => {
   it('shows a loading shell until the local snapshot resolves', async () => {
     let resolve!: (snapshot: AppSnapshot) => void;
@@ -76,13 +103,15 @@ describe('new tab application', () => {
     render(<App services={services} />);
     expect(screen.getByRole('status')).toHaveTextContent('正在准备启动页');
     resolve(createDefaultSnapshot());
-    expect(await screen.findByText('GitHub')).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: '全部' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByRole('article')).toHaveLength(4);
+    expect(await findBookmark('GitHub')).toBeInTheDocument();
   });
 
   it('uses local storage only, labels local data, and saves an added bookmark', async () => {
     const services = fakeServices(createDefaultSnapshot());
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     expect(screen.getByText('数据保存在本机')).toBeInTheDocument();
     expect(screen.queryByText(/Microsoft/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '添加书签' }));
@@ -90,6 +119,137 @@ describe('new tab application', () => {
     fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://example.com/docs' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(expect.objectContaining({ bookmarks: expect.arrayContaining([expect.objectContaining({ id: 'docs' })]) })));
+  });
+
+  it('shows all bookmarks when recent is empty and remembers a valid view on reload', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    const mounted = render(<App services={services} />);
+    fireEvent.click(await screen.findByRole('tab', { name: '最近常用' }));
+    expect(screen.getByText(/最近 30 天暂无打开记录/)).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'GitHub' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: '开发' }));
+    mounted.unmount();
+    render(<App services={services} />);
+    expect(await screen.findByRole('tab', { name: '开发' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('falls back from a remembered deleted group when remote content changes', async () => {
+    const local = createDefaultSnapshot();
+    local.groups.push({ id: 'reading', name: '阅读', order: 1, updatedAt: 0 });
+    const sync = liveSync();
+    const services = fakeServices(local);
+    services.sync = sync.provider;
+    render(<App services={services} />);
+    await screen.findByText(/已同步/);
+    fireEvent.click(screen.getByRole('tab', { name: '阅读' }));
+    const remote = structuredClone(local);
+    remote.groups[1] = { ...remote.groups[1]!, deletedAt: 100, updatedAt: 100 };
+    sync.emit(remote);
+    await waitFor(() => expect(screen.queryByRole('tab', { name: '阅读' })).not.toBeInTheDocument());
+    expect(screen.getByRole('tab', { name: '全部' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('article', { name: 'GitHub' })).toBeInTheDocument();
+  });
+
+  it('reveals an added bookmark beyond the display limit, including from the recent view', async () => {
+    const initial = createDefaultSnapshot();
+    initial.bookmarks = Array.from({ length: 12 }, (_, index) => ({ ...initial.bookmarks[0]!, id: `item-${index}`, title: `Item ${index}`, order: index }));
+    const services = fakeServices(initial);
+    render(<App services={services} />);
+    fireEvent.click(await screen.findByRole('tab', { name: '最近常用' }));
+    fireEvent.click(screen.getByRole('button', { name: '添加书签' }));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Visible after adding' } });
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://visible.test/' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }));
+    expect(await screen.findByRole('article', { name: 'Visible after adding' })).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(8);
+    expect(screen.getByRole('tab', { name: '开发' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('已添加“Visible after adding”到“开发”')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看全部（共 13 个）' })).toBeInTheDocument();
+  });
+
+  it('opens all visible fallback bookmarks in the manager when recent history is empty', async () => {
+    const initial = createDefaultSnapshot();
+    initial.bookmarks = Array.from({ length: 10 }, (_, index) => ({ ...initial.bookmarks[0]!, id: `item-${index}`, title: `Item ${index}`, order: index }));
+    render(<App services={fakeServices(initial)} />);
+    fireEvent.click(await screen.findByRole('tab', { name: '最近常用' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看全部（共 10 个）' }));
+    const manager = screen.getByRole('dialog', { name: '书签管理' });
+    expect(within(manager).getByRole('heading', { name: '全部' })).toBeInTheDocument();
+    expect(within(manager).getByLabelText('选择 Item 9')).toBeInTheDocument();
+  });
+
+  it('defaults a new bookmark to the current group and keeps save failures visible', async () => {
+    const initial = createDefaultSnapshot();
+    initial.groups.push({ id: 'reading', name: '阅读', order: 1, updatedAt: 0 });
+    const services = fakeServices(initial);
+    services.repository.save = vi.fn().mockRejectedValue(new Error('disk full'));
+    render(<App services={services} />);
+    fireEvent.click(await screen.findByRole('tab', { name: '阅读' }));
+    fireEvent.click(screen.getByRole('button', { name: '添加书签' }));
+    expect(screen.getByLabelText('Group')).toHaveValue('reading');
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Unsaved' } });
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: 'https://unsaved.test/' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }));
+    expect(await screen.findByText('“Unsaved”尚未保存，请重试')).toBeInTheDocument();
+    expect(screen.getByText('保存失败：disk full')).toBeInTheDocument();
+  });
+
+  it('uses the same local statistics for mouse search, keyboard search, and cards without pushing clicks', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    services.sync = fakeSync();
+    render(<App services={services} />);
+    await screen.findByText(/已同步/);
+    vi.mocked(services.sync.push).mockClear();
+    const input = screen.getByRole('combobox', { name: '搜索书签或输入网址' });
+    fireEvent.change(input, { target: { value: 'GitHub' } });
+    fireEvent.click(within(screen.getByRole('option', { name: /^GitHub / })).getByRole('button'));
+    await waitFor(() => expect(services.navigate).toHaveBeenCalledTimes(1));
+    fireEvent.change(input, { target: { value: 'gthb' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(services.navigate).toHaveBeenCalledTimes(2));
+    const link = screen.getByRole('article', { name: 'GitHub' }).querySelector('a')!;
+    link.addEventListener('click', (event) => event.preventDefault(), { once: true });
+    fireEvent.click(link);
+    await waitFor(() => expect(services.repository.save).toHaveBeenLastCalledWith(expect.objectContaining({ bookmarkUsage: { github: { totalOpenCount: 3, recentOpenTimestamps: [services.now!(), services.now!(), services.now!()] } } })));
+    expect(screen.getByLabelText('GitHub 打开统计')).toHaveTextContent('总计3');
+    await waitFor(() => expect(services.navigate).toHaveBeenCalledTimes(3));
+    expect(services.sync.push).not.toHaveBeenCalled();
+  });
+
+  it('uses the real local-only usage writer for search navigation', async () => {
+    const storage = memoryChromeStorage();
+    const repository = new SnapshotRepository(storage);
+    await repository.save(createDefaultSnapshot());
+    const writes = vi.spyOn(storage, 'set');
+    const services = fakeServices(createDefaultSnapshot());
+    services.repository = repository;
+    render(<App services={services} />);
+    const input = await screen.findByRole('combobox', { name: '搜索书签或输入网址' });
+    fireEvent.change(input, { target: { value: 'GitHub' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(services.navigate).toHaveBeenCalledWith('https://github.com/'));
+    expect(writes).toHaveBeenCalledExactlyOnceWith({ 'app:bookmark-usage:v1': { github: { totalOpenCount: 1, recentOpenTimestamps: [services.now!()] } } });
+    expect((await repository.load()).bookmarkUsage.github.totalOpenCount).toBe(1);
+  });
+
+  it('keeps a pending content sync from getting stuck when a local click is saved', async () => {
+    const services = fakeServices(createDefaultSnapshot());
+    const sync = fakeSync();
+    let resolve!: (value: { kind: 'synced'; at: number }) => void;
+    sync.push = vi.fn().mockImplementation(() => new Promise((done) => { resolve = done; }));
+    services.sync = sync;
+    render(<App services={services} />);
+    await waitFor(() => expect(sync.push).toHaveBeenCalledTimes(1));
+    const input = screen.getByRole('combobox', { name: '搜索书签或输入网址' });
+    fireEvent.change(input, { target: { value: 'GitHub' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(services.navigate).toHaveBeenCalled());
+    await act(async () => resolve({ kind: 'synced', at: services.now!() }));
+    expect(await screen.findByText(/已同步/)).toBeInTheDocument();
+    expect(sync.push).toHaveBeenCalledTimes(1);
   });
 
   it('pulls, merges, saves locally, and pushes Edge sync data on startup', async () => {
@@ -101,7 +261,7 @@ describe('new tab application', () => {
 
     render(<App services={services} />);
 
-    expect(await screen.findByText('GitHub from Edge')).toBeInTheDocument();
+    expect(await findBookmark('GitHub from Edge')).toBeInTheDocument();
     await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(
       expect.objectContaining({ bookmarks: expect.arrayContaining([expect.objectContaining({ title: 'GitHub from Edge' })]) }),
     ));
@@ -110,6 +270,25 @@ describe('new tab application', () => {
       bookmarks: expect.arrayContaining([expect.objectContaining({ title: 'GitHub from Edge' })]),
     }));
     expect(await screen.findByText(/已同步/)).toBeInTheDocument();
+  });
+
+  it('merges a later cross-device storage change into the live page', async () => {
+    const local = createDefaultSnapshot();
+    const remote = structuredClone(local);
+    remote.bookmarks[0] = { ...remote.bookmarks[0]!, title: 'GitHub from another device', updatedAt: 100 };
+    const sync = liveSync();
+    const services = fakeServices(local);
+    services.sync = sync.provider;
+
+    render(<App services={services} />);
+    await screen.findByText(/已同步/);
+    sync.emit(remote);
+
+    expect(await findBookmark('GitHub from another device')).toBeInTheDocument();
+    await waitFor(() => expect(services.repository.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bookmarks: expect.arrayContaining([expect.objectContaining({ title: 'GitHub from another device' })]) }),
+    ));
+    expect(sync.provider.pull).toHaveBeenCalledTimes(2);
   });
 
   it('keeps local changes usable and reports a non-blocking Edge sync failure', async () => {
@@ -121,7 +300,7 @@ describe('new tab application', () => {
     render(<App services={services} />);
 
     expect(await screen.findByText(/已保存在本机，同步失败：Edge sync unavailable/)).toBeInTheDocument();
-    expect(screen.getByText('GitHub')).toBeInTheDocument();
+    expect(await findBookmark('GitHub')).toBeInTheDocument();
     expect(services.repository.save).toHaveBeenCalled();
   });
 
@@ -130,6 +309,7 @@ describe('new tab application', () => {
     snapshot.settings.bookmarkDisplayLimit = 8;
     snapshot.bookmarks = Array.from({ length: 9 }, (_, index) => ({ ...snapshot.bookmarks[0]!, id: `bookmark-${index}`, title: `Bookmark ${index}`, order: index }));
     render(<App services={fakeServices(snapshot)} />);
+    fireEvent.click(await screen.findByRole('tab', { name: '开发' }));
     expect(await screen.findByRole('button', { name: '查看全部（共 9 个）' })).toBeInTheDocument();
     const viewAll = screen.getByRole('button', { name: '查看全部（共 9 个）' });
     fireEvent.click(viewAll);
@@ -143,9 +323,10 @@ describe('new tab application', () => {
     snapshot.groups.push({ id: 'reading', name: '阅读', order: 1, updatedAt: 0 });
     const services = fakeServices(snapshot);
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '管理书签' }));
     fireEvent.click(screen.getByLabelText('选择 GitHub'));
+    fireEvent.change(screen.getByRole('combobox', { name: '移动到分组' }), { target: { value: 'reading' } });
     fireEvent.click(screen.getByRole('button', { name: '移动 1 个书签' }));
     await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(expect.objectContaining({ bookmarks: expect.arrayContaining([expect.objectContaining({ id: 'github', groupId: 'reading' })]) })));
   });
@@ -153,7 +334,7 @@ describe('new tab application', () => {
   it('opens time and weather drawers exclusively and restores trigger focus', async () => {
     const services = fakeServices(createDefaultSnapshot());
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     const time = screen.getByRole('button', { name: /时间/ });
     const weatherSummary = screen.getByRole('button', { name: /^天气/ });
     fireEvent.click(time);
@@ -168,7 +349,7 @@ describe('new tab application', () => {
   it('persists time preferences and reflects seconds in the top summary', async () => {
     const services = fakeServices(createDefaultSnapshot());
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: /时间/ }));
     fireEvent.click(screen.getByRole('checkbox', { name: '显示秒' }));
     await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(expect.objectContaining({ settings: expect.objectContaining({ clockShowSeconds: true }) })));
@@ -224,7 +405,7 @@ describe('new tab application', () => {
     const services = fakeServices(createDefaultSnapshot());
     services.backgrounds.get = vi.fn().mockRejectedValue(new Error('background unavailable'));
     render(<App services={services} />);
-    expect(await screen.findByText('GitHub')).toBeInTheDocument();
+    expect(await findBookmark('GitHub')).toBeInTheDocument();
     expect(screen.getByRole('status', { name: '背景回退提示' })).toHaveTextContent('background unavailable');
     expect(screen.getByRole('status', { name: '背景回退提示' })).not.toHaveTextContent('自定义背景读取失败');
   });
@@ -235,7 +416,7 @@ describe('new tab application', () => {
     const services = fakeServices(snapshot);
     services.backgrounds.get = vi.fn().mockRejectedValue(new Error('background unavailable'));
     render(<App services={services} />);
-    expect(await screen.findByText('GitHub')).toBeInTheDocument();
+    expect(await findBookmark('GitHub')).toBeInTheDocument();
     expect(screen.getByRole('status', { name: '背景回退提示' })).toHaveTextContent('自定义背景读取失败');
   });
 
@@ -248,7 +429,7 @@ describe('new tab application', () => {
     services.faviconCache = { clear: clearFavicons };
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.click(screen.getByRole('button', { name: '重置全部数据' }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith('weather:forecast-cache'));
@@ -274,7 +455,7 @@ describe('new tab application', () => {
     const services = fakeServices(createDefaultSnapshot());
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: 'Edit GitHub' }));
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'GitHub Edited' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save bookmark' }));
@@ -295,7 +476,7 @@ describe('new tab application', () => {
     const services = fakeServices(snapshot);
     services.repository.save = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.change(screen.getByRole('combobox', { name: '每组显示书签' }), { target: { value: '12' } });
     await waitFor(() => expect(services.repository.save).toHaveBeenCalledTimes(1));
@@ -310,19 +491,20 @@ describe('new tab application', () => {
   it('keeps theme, settings, import/export, and schema-one backup migration available', async () => {
     const services = fakeServices(createDefaultSnapshot());
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.click(screen.getByRole('button', { name: '导出备份' }));
     expect(services.download).toHaveBeenCalledOnce();
     const old = createDefaultSnapshot() as unknown as Record<string, unknown>;
     old.schemaVersion = 1;
+    delete old.bookmarkUsage;
     const settings = { ...(old.settings as Record<string, unknown>) };
     for (const key of ['bookmarkDisplayLimit', 'clockHour12', 'clockShowSeconds', 'clockShowFullDate', 'temperatureUnit', 'weatherLocation']) delete settings[key];
     old.settings = settings;
     const backup = JSON.stringify({ app: 'day-start', exportedAt: new Date(0).toISOString(), snapshot: old });
     fireEvent.change(screen.getByLabelText('导入备份'), { target: { files: [new File([backup], 'legacy.json')] } });
     fireEvent.click(await screen.findByRole('button', { name: '确认导入' }));
-    await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(expect.objectContaining({ schemaVersion: 2, settings: expect.objectContaining({ bookmarkDisplayLimit: 8 }) })));
+    await waitFor(() => expect(services.repository.save).toHaveBeenCalledWith(expect.objectContaining({ schemaVersion: 3, settings: expect.objectContaining({ bookmarkDisplayLimit: 8 }) })));
     fireEvent.click(screen.getByRole('button', { name: '关闭应用设置' }));
     fireEvent.click(screen.getByRole('button', { name: '主题' }));
     fireEvent.click(screen.getByRole('listitem', { name: '极光' }));
@@ -359,7 +541,7 @@ describe('new tab application', () => {
     const services = fakeServices(current);
     services.repository = repository;
     const firstMount = render(<App services={services} />);
-    await screen.findByText('当前 GitHub');
+    await findBookmark('当前 GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.click(screen.getByLabelText('合并数据'));
     const backup = await exportSnapshot(incoming).text();
@@ -388,7 +570,7 @@ describe('new tab application', () => {
 
     firstMount.unmount();
     render(<App services={services} />);
-    expect(await screen.findByText('导入追加书签')).toBeInTheDocument();
+    expect(await findBookmark('导入追加书签')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '导入追加分组' })).toBeInTheDocument();
     expect(screen.queryByText('导入 GitHub')).not.toBeInTheDocument();
   });
@@ -414,7 +596,7 @@ describe('new tab application', () => {
     const services = fakeServices(current);
     services.repository = repository;
     const firstMount = render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     fireEvent.click(screen.getByLabelText('合并数据'));
     const backup = await exportSnapshot(incoming).text();
@@ -433,7 +615,7 @@ describe('new tab application', () => {
 
     firstMount.unmount();
     render(<App services={services} />);
-    await screen.findByText('GitHub');
+    await findBookmark('GitHub');
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     expect(screen.getByRole('combobox', { name: '每组显示书签' })).toHaveValue('12');
     expect(screen.queryByText('不应恢复的活动书签')).not.toBeInTheDocument();

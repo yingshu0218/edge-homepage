@@ -6,9 +6,13 @@ export type Bookmark = {
   order: number;
   createdAt: number;
   updatedAt: number;
-  totalOpenCount?: number;
-  recentOpenTimestamps?: number[];
   deletedAt?: number;
+};
+
+// Device-local usage. Content revisions and Edge sync never include these fields.
+export type BookmarkUsage = {
+  totalOpenCount: number;
+  recentOpenTimestamps: number[];
 };
 
 export type BookmarkGroup = {
@@ -48,8 +52,9 @@ export type AppSettings = {
 };
 
 export type AppSnapshot = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   bookmarks: Bookmark[];
+  bookmarkUsage: Record<string, BookmarkUsage>;
   groups: BookmarkGroup[];
   settings: AppSettings;
 };

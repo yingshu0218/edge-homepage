@@ -12,9 +12,20 @@ describe('snapshot transfer', () => {
     expect(parseSnapshot(text)).toEqual(snapshot);
   });
 
-  it('migrates a schema-1 backup to schema 2', () => {
+  it('round-trips schema-2 backups through schema 3 with all content and detailed usage intact', async () => {
+    const { bookmarkUsage: _usage, ...content } = createDefaultSnapshot();
+    const legacy = { ...content, schemaVersion: 2, bookmarks: content.bookmarks.map((bookmark) => ({ ...bookmark, totalOpenCount: 800, recentOpenTimestamps: Array(600).fill(100) })) };
+    const migrated = parseSnapshot(JSON.stringify(legacy));
+    const roundTripped = parseSnapshot(await exportSnapshot(migrated).text());
+    expect(roundTripped.bookmarks).toEqual(content.bookmarks);
+    expect(roundTripped.bookmarkUsage.github).toEqual({ totalOpenCount: 800, recentOpenTimestamps: Array(600).fill(100) });
+    expect(roundTripped).toEqual(migrated);
+  });
+
+  it('migrates a schema-1 backup to schema 3', () => {
     const v1 = createDefaultSnapshot() as unknown as Record<string, unknown>;
     v1.schemaVersion = 1;
+    delete v1.bookmarkUsage;
     const settings = { ...(v1.settings as Record<string, unknown>) };
     delete settings.bookmarkDisplayLimit;
     delete settings.clockHour12;
@@ -24,7 +35,7 @@ describe('snapshot transfer', () => {
     delete settings.weatherLocation;
     v1.settings = settings;
 
-    expect(parseSnapshot(JSON.stringify(v1)).schemaVersion).toBe(2);
+    expect(parseSnapshot(JSON.stringify(v1)).schemaVersion).toBe(3);
   });
 
   it('rejects unknown schemas before writing', () => {

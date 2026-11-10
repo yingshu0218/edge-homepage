@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createDefaultSnapshot } from '../domain/defaults';
 import type { ChromeStorageArea } from './types';
@@ -45,10 +45,73 @@ describe('SnapshotRepository', () => {
     expect((await repository.load()).groups[0].name).toBe('工作');
   });
 
+  it('writes clicks only to the usage key and preserves a content edit from another tab', async () => {
+    const storage = fakeChromeStorage();
+    const repository = new SnapshotRepository(storage);
+    const edited = createDefaultSnapshot();
+    edited.bookmarks[0] = { ...edited.bookmarks[0]!, title: 'Edited in another tab', updatedAt: 20 };
+    await repository.save(edited);
+    const writes = vi.spyOn(storage, 'set');
+    const recorded = await new SnapshotRepository(storage).recordOpen('github', 100);
+    expect(writes).toHaveBeenCalledExactlyOnceWith({ 'app:bookmark-usage:v1': { github: { totalOpenCount: 1, recentOpenTimestamps: [100] } } });
+    expect(recorded.bookmarks[0]).toMatchObject({ title: 'Edited in another tab', updatedAt: 20 });
+    expect((await repository.load()).bookmarks).toEqual(edited.bookmarks);
+  });
+
+  it('serializes concurrent local opens and keeps their counters when older content is saved', async () => {
+    const storage = fakeChromeStorage();
+    const first = new SnapshotRepository(storage);
+    const second = new SnapshotRepository(storage);
+    const stale = createDefaultSnapshot();
+    await first.save(stale);
+    await Promise.all(Array.from({ length: 20 }, (_, index) => (index % 2 ? first : second).recordOpen('github', 100 + index)));
+    stale.bookmarks[0]!.title = 'A content edit based on an older view';
+    await second.save(stale);
+    const loaded = await first.load();
+    expect(loaded.bookmarkUsage.github).toEqual({ totalOpenCount: 20, recentOpenTimestamps: Array.from({ length: 20 }, (_, index) => 100 + index) });
+    expect(loaded.bookmarks[0]!.title).toBe(stale.bookmarks[0]!.title);
+  });
+
+  it('restores exact backup statistics on replacement and clears them on reset', async () => {
+    const repository = new SnapshotRepository(fakeChromeStorage());
+    await repository.recordOpen('github', 100);
+    const backup = createDefaultSnapshot();
+    backup.bookmarkUsage.github = { totalOpenCount: 7, recentOpenTimestamps: [10, 20] };
+    await repository.replace(backup);
+    expect(await repository.load()).toEqual(backup);
+    await repository.replace(createDefaultSnapshot());
+    expect((await repository.load()).bookmarkUsage).toEqual({});
+  });
+
+  it('preserves imported IDs that also exist on Object.prototype', async () => {
+    const repository = new SnapshotRepository(fakeChromeStorage());
+    const snapshot = createDefaultSnapshot();
+    snapshot.bookmarks = [{ ...snapshot.bookmarks[0]!, id: 'constructor' }];
+    await repository.save(snapshot);
+    expect((await repository.load()).bookmarkUsage).toEqual({});
+    await repository.recordOpen('constructor', 100);
+    expect((await repository.load()).bookmarkUsage.constructor).toEqual({ totalOpenCount: 1, recentOpenTimestamps: [100] });
+  });
+
+  it('migrates schema-2 content and detailed usage to separate local fields without losing bookmarks', async () => {
+    const storage = fakeChromeStorage();
+    const { bookmarkUsage: _usage, ...content } = createDefaultSnapshot();
+    const old = { ...content, schemaVersion: 2, bookmarks: content.bookmarks.map((bookmark) => ({ ...bookmark, totalOpenCount: 900, recentOpenTimestamps: Array(600).fill(100) })) };
+    await storage.set({ 'app:snapshot': old });
+    const repository = new SnapshotRepository(storage);
+    const migrated = await repository.load();
+    expect(migrated.schemaVersion).toBe(3);
+    expect(migrated.bookmarks).toEqual(content.bookmarks);
+    expect(migrated.bookmarkUsage.github).toEqual({ totalOpenCount: 900, recentOpenTimestamps: Array(600).fill(100) });
+    await repository.save(migrated);
+    expect(await repository.load()).toEqual(migrated);
+  });
+
   it('migrates an existing schema-1 local snapshot', async () => {
     const storage = fakeChromeStorage();
     const snapshot = createDefaultSnapshot() as unknown as Record<string, unknown>;
     snapshot.schemaVersion = 1;
+    delete snapshot.bookmarkUsage;
     const settings = { ...(snapshot.settings as Record<string, unknown>) };
     delete settings.bookmarkDisplayLimit;
     delete settings.clockHour12;
@@ -61,7 +124,7 @@ describe('SnapshotRepository', () => {
     const repository = new SnapshotRepository(storage);
 
     await expect(repository.load()).resolves.toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       settings: {
         bookmarkDisplayLimit: 8,
         clockHour12: false,

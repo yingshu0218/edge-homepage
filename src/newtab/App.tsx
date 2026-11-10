@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import { createDefaultSnapshot } from '../domain/defaults';
+import { mergeLocalUsage } from '../domain/bookmarkUsage';
 import type { AppSnapshot, Bookmark } from '../domain/models';
 import { BookmarkDialog, type BookmarkDialogValue } from '../features/bookmarks/BookmarkDialog';
 import type { FaviconCache } from '../features/bookmarks/faviconCache';
@@ -10,7 +11,8 @@ import { BookmarkManagerDrawer } from '../features/bookmarks/BookmarkManagerDraw
 import { BookmarkSortDrawer } from '../features/bookmarks/BookmarkSortDrawer';
 import { GroupManager } from '../features/bookmarks/GroupManager';
 import { GroupTabs } from '../features/bookmarks/GroupTabs';
-import { addBookmark, addGroup, deleteBookmark, deleteBookmarks, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, moveBookmarks, recordBookmarkOpen, reorderGroups } from '../features/bookmarks/bookmarkActions';
+import { RECENT_BOOKMARKS, ALL_BOOKMARKS, selectBookmarks, addBookmark, addGroup, deleteBookmark, deleteBookmarks, deleteGroup, deleteGroupAndBookmarks, editBookmark, editGroup, moveBookmarks, recordBookmarkOpen, reorderGroups } from '../features/bookmarks/bookmarkActions';
+import { readBookmarkView, resolveBookmarkView, saveBookmarkView } from '../features/bookmarks/bookmarkView';
 import { SearchBox } from '../features/search/SearchBox';
 import { SettingsPanel, type ImportMode } from '../features/settings/SettingsPanel';
 import { ThemePicker } from '../features/themes/ThemePicker';
@@ -82,6 +84,7 @@ function mergeImported(current: AppSnapshot, incoming: AppSnapshot): AppSnapshot
     ...current,
     groups,
     bookmarks,
+    bookmarkUsage: { ...Object.fromEntries(Object.entries(incoming.bookmarkUsage).filter(([id]) => !bookmarkIds.has(id) && bookmarks.some((bookmark) => bookmark.id === id))), ...current.bookmarkUsage },
     settings: { ...current.settings, ...incoming.settings, updatedAt: incoming.settings.updatedAt },
   };
 }
@@ -97,7 +100,9 @@ export function App({ services }: { services: AppServices }) {
   const [backgroundError, setBackgroundError] = useState<string>();
   const [backgroundLoaded, setBackgroundLoaded] = useState(false);
   const [backgroundFallback, setBackgroundFallback] = useState(false);
-  const [activeGroupId, setActiveGroupId] = useState('');
+  const [activeGroupId, setActiveGroupId] = useState(readBookmarkView);
+  const [revealedBookmarkId, setRevealedBookmarkId] = useState<string>();
+  const [bookmarkFeedback, setBookmarkFeedback] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Bookmark>();
   const [drawer, setDrawer] = useState<Drawer>(null);
@@ -116,14 +121,16 @@ export function App({ services }: { services: AppServices }) {
   const remoteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestSnapshotRef = useRef<AppSnapshot | undefined>(undefined);
   const latestSaveRef = useRef(0);
+  const latestSyncRef = useRef(0);
   const syncStartedRef = useRef(false);
 
   const acceptSnapshot = useCallback((next: AppSnapshot) => {
     latestSnapshotRef.current = next;
     setSnapshot(next);
-    setActiveGroupId((current) => next.groups.some((group) => group.id === current && !group.deletedAt)
-      ? current : (next.groups.find((group) => !group.deletedAt)?.id ?? ''));
-  }, []);
+    setActiveGroupId((current) => resolveBookmarkView(next, current, now()));
+  }, [now]);
+
+  useEffect(() => { if (activeGroupId) saveBookmarkView(activeGroupId); }, [activeGroupId]);
 
   useEffect(() => {
     let active = true;
@@ -156,14 +163,23 @@ export function App({ services }: { services: AppServices }) {
 
   const currentTime = useLocalClock(snapshot?.settings.clockShowSeconds ?? false, now);
   const weather = useWeather({ location: snapshot?.settings.weatherLocation, client: services.weather, cache: services.weatherCache, now });
-  const persist = useCallback(async (next: AppSnapshot) => {
+  const persist = useCallback(async (next: AppSnapshot, options: { syncContent?: boolean; open?: { id: string; at: number }; replace?: boolean } = {}) => {
+    const syncContent = options.syncContent ?? true;
     acceptSnapshot(next);
     const version = latestSaveRef.current + 1;
     latestSaveRef.current = version;
+    const syncVersion = syncContent ? ++latestSyncRef.current : latestSyncRef.current;
     setSaveError(undefined);
-    const write = saveQueueRef.current.catch(() => undefined).then(() => services.repository.save(next));
+    const write = saveQueueRef.current.catch(() => undefined).then(async () => {
+      if (options.open && services.repository.recordOpen) {
+        const saved = await services.repository.recordOpen(options.open.id, options.open.at);
+        const latest = latestSnapshotRef.current ?? next;
+        acceptSnapshot({ ...latest, bookmarkUsage: mergeLocalUsage(latest.bookmarks, saved.bookmarkUsage, latest.bookmarkUsage) });
+      } else if (options.replace && services.repository.replace) await services.repository.replace(next);
+      else await services.repository.save(next);
+    });
     saveQueueRef.current = write.catch(() => undefined);
-    if (services.sync) setSyncState({ kind: 'pending' });
+    if (services.sync && syncContent) setSyncState({ kind: 'pending' });
     try {
       await write;
       if (latestSaveRef.current === version) setSaveError(undefined);
@@ -174,19 +190,26 @@ export function App({ services }: { services: AppServices }) {
         setSaveError(message);
         if (services.sync) setSyncState({ kind: 'error', message, localSaved: false });
       }
-      return;
+      return false;
     }
-    if (!services.sync) return;
+    if (!services.sync || !syncContent) return true;
     try {
       const result = await services.sync.push(next);
-      if (latestSaveRef.current === version) setSyncState(result);
+      if (latestSyncRef.current === syncVersion) setSyncState(result);
     }
     catch (cause) {
-      if (latestSaveRef.current === version) {
+      if (latestSyncRef.current === syncVersion) {
         setSyncState({ kind: 'error', message: cause instanceof Error ? cause.message : String(cause), localSaved: true });
       }
     }
+    return true;
   }, [acceptSnapshot, services.repository, services.sync]);
+
+  const trackBookmarkOpen = useCallback(async (bookmark: Bookmark) => {
+    const latest = latestSnapshotRef.current;
+    const at = now();
+    if (latest) await persist(recordBookmarkOpen(latest, bookmark.id, at), { syncContent: false, open: { id: bookmark.id, at } });
+  }, [now, persist]);
 
   useEffect(() => {
     if (!snapshot || !services.sync || syncStartedRef.current) return;
@@ -248,16 +271,24 @@ export function App({ services }: { services: AppServices }) {
   if (error) return <main className="state-shell"><section role="alert"><strong>启动页暂时无法加载</strong><p>{error}</p><button type="button" onClick={() => window.location.reload()}>重新加载</button></section></main>;
   if (!snapshot) return <main className="state-shell"><p role="status">正在准备启动页…</p></main>;
 
-  const activeGroup = activeGroupId || snapshot.groups.find((group) => !group.deletedAt)?.id || '';
+  const activeGroup = resolveBookmarkView(snapshot, activeGroupId, now());
+  const recentFallback = activeGroup === RECENT_BOOKMARKS && selectBookmarks(snapshot, RECENT_BOOKMARKS, now()).length === 0;
   const saveBookmark = (value: BookmarkDialogValue) => {
-    const next = editing ? editBookmark(snapshot, editing.id, value, now()) : addBookmark(snapshot, { ...value, id: createId(), now: now() });
-    setDialogOpen(false); setEditing(undefined); void persist(next); void loadBookmarkIcon(value.url);
+    const id = editing?.id ?? createId();
+    const verb = editing ? '更新' : '添加';
+    const next = editing ? editBookmark(snapshot, id, value, now()) : addBookmark(snapshot, { ...value, id, now: now() });
+    setActiveGroupId(value.groupId);
+    setRevealedBookmarkId(id);
+    setBookmarkFeedback(`正在保存“${value.title}”…`);
+    setDialogOpen(false); setEditing(undefined);
+    void persist(next).then((saved) => setBookmarkFeedback(saved ? `已${verb}“${value.title}”到“${next.groups.find(({ id: groupId }) => groupId === value.groupId)?.name}”` : `“${value.title}”尚未保存，请重试`));
+    void loadBookmarkIcon(value.url);
   };
   const importData = async (text: string, mode: ImportMode) => {
     const imported = parseSnapshot(text);
     if (mode === 'replace') {
       await services.backgrounds.clear(); setCustomBackground(undefined);
-      await persist({ ...imported, settings: { ...imported.settings, useCustomBackground: false, updatedAt: now() } });
+      await persist({ ...imported, settings: { ...imported.settings, useCustomBackground: false, updatedAt: now() } }, { replace: true });
     } else await persist(mergeImported(snapshot, imported));
   };
   const reset = async () => {
@@ -268,7 +299,7 @@ export function App({ services }: { services: AppServices }) {
         services.faviconCache?.clear(),
       ]);
       setCustomBackground(undefined);
-      await persist(createDefaultSnapshot());
+      await persist(createDefaultSnapshot(), { replace: true });
     }
     catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); }
   };
@@ -298,9 +329,11 @@ export function App({ services }: { services: AppServices }) {
     <div className="workspace">
       <section className="command-area">
         <h1>今天去哪里？</h1><p className="date-line">{dateFormatter.format(currentTime)} · {formatClock(currentTime, { hour12: snapshot.settings.clockHour12, showSeconds: snapshot.settings.clockShowSeconds })}</p>
-        <SearchBox searchTemplate={snapshot.settings.searchTemplate} navigate={services.navigate} placeholder="搜索书签、输入网址或执行命令" />
+        <SearchBox searchTemplate={snapshot.settings.searchTemplate} navigate={services.navigate} snapshot={snapshot} onBookmarkOpen={trackBookmarkOpen} />
         <div className="section-heading"><strong>置顶</strong><div><button ref={bookmarksButtonRef} type="button" className="sort-manager-button" aria-label="管理书签" onClick={() => openDrawer('bookmarks', bookmarksButtonRef.current)}>管理书签</button><button ref={sortButtonRef} type="button" className="sort-manager-button" onClick={() => openDrawer('sort', sortButtonRef.current)}>管理排序</button><button ref={addButtonRef} type="button" aria-label="添加书签" onClick={() => { setEditing(undefined); setDialogOpen(true); }}>＋ 添加</button></div></div>
-        <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={activeGroup} limit={snapshot.settings.bookmarkDisplayLimit} now={now()} onOpen={(bookmark) => void persist(recordBookmarkOpen(snapshot, bookmark.id, now()))} onViewAll={(trigger) => openDrawer('bookmarks', trigger)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>添加到当前分组</small></button></div>
+        {bookmarkFeedback && <p className="bookmark-feedback" role="status">{bookmarkFeedback}</p>}
+        {recentFallback && <p className="bookmark-feedback">最近 30 天暂无打开记录，先显示全部书签。</p>}
+        <div className="bookmark-collection"><BookmarkGrid snapshot={snapshot} groupId={recentFallback ? ALL_BOOKMARKS : activeGroup} revealedBookmarkId={revealedBookmarkId} limit={snapshot.settings.bookmarkDisplayLimit} now={now()} onOpen={trackBookmarkOpen} navigate={services.navigate} onViewAll={(trigger) => openDrawer('bookmarks', trigger)} onEdit={(bookmark) => { setEditing(bookmark); setDialogOpen(true); }} onDelete={(bookmark) => { if (window.confirm(`删除“${bookmark.title}”？`)) void persist(deleteBookmark(snapshot, bookmark.id, now())); }} /><button className="new-bookmark-card" type="button" onClick={() => { setEditing(undefined); setDialogOpen(true); }}><b>＋</b><span>新建书签</span><small>{activeGroup === RECENT_BOOKMARKS || activeGroup === ALL_BOOKMARKS ? '添加到分组' : '添加到当前分组'}</small></button></div>
         <div className="group-rail"><GroupTabs groups={snapshot.groups} activeGroupId={activeGroup} onSelect={setActiveGroupId} /><button ref={groupsButtonRef} type="button" aria-label="管理分组" onClick={() => openDrawer('groups', groupsButtonRef.current)}>管理</button></div>
       </section>
       <aside className="dashboard-column" aria-label="启动页概览">
@@ -313,12 +346,12 @@ export function App({ services }: { services: AppServices }) {
         />
       </aside>
     </div>
-    <BookmarkDialog open={dialogOpen} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
+    <BookmarkDialog open={dialogOpen} defaultGroupId={activeGroup} groups={snapshot.groups} searchTemplate={snapshot.settings.searchTemplate} bookmark={editing} onSave={saveBookmark} onClose={() => { setDialogOpen(false); setEditing(undefined); }} returnFocusRef={addButtonRef} />
     {drawer && <div className="drawer-scrim" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><aside ref={drawerRef} className="drawer" role="dialog" aria-modal="true" aria-label={drawerLabel(drawer)} onKeyDown={handleDrawerKeyDown}><header><h2>{drawerLabel(drawer)}</h2><button ref={drawerCloseRef} className="icon-button" type="button" aria-label={`关闭${drawerLabel(drawer)}`} onClick={() => setDrawer(null)}>×</button></header>
       {drawer === 'theme' ? <ThemePicker selectedThemeId={snapshot.settings.themeId} useCustomBackground={snapshot.settings.useCustomBackground} appearance={snapshot.settings.appearance} overlay={snapshot.settings.overlay} blur={snapshot.settings.blur} backgroundStore={services.backgrounds} onThemeChange={(themeId, recommended) => updateSettings({ themeId, useCustomBackground: false, ...recommended })} onAppearanceChange={updateSettings} onCustomBackgroundChange={(enabled) => { updateSettings({ useCustomBackground: enabled }); if (enabled) void services.backgrounds.get().then((background) => { setCustomBackground(background); setBackgroundFallback(!background); }); }} /> : null}
-      {drawer === 'sort' ? <BookmarkSortDrawer snapshot={snapshot} groupId={activeGroup} onChange={(next) => void persist(next)} now={now} /> : null}
+      {drawer === 'sort' ? <BookmarkSortDrawer snapshot={snapshot} groupId={snapshot.groups.some((group) => group.id === activeGroup && group.deletedAt === undefined) ? activeGroup : [...snapshot.groups].filter((group) => group.deletedAt === undefined).sort((a, b) => a.order - b.order)[0]?.id ?? ''} onChange={(next) => void persist(next)} now={now} /> : null}
       {drawer === 'groups' ? <GroupManager snapshot={snapshot} onCreate={(name) => void persist(addGroup(snapshot, { id: createId(), name }, now()))} onRename={(id, name) => void persist(editGroup(snapshot, id, name, now()))} onReorder={(activeId, overId) => void persist(reorderGroups(snapshot, activeId, overId, now()))} onDelete={(id, mode, destinationId) => { if (mode === 'delete') void persist(deleteGroupAndBookmarks(snapshot, id, now())); else if (destinationId) void persist(deleteGroup(snapshot, id, destinationId, now())); }} /> : null}
-      {drawer === 'bookmarks' ? <BookmarkManagerDrawer snapshot={snapshot} groupId={activeGroup} onEdit={(bookmark) => { setDrawer(null); setEditing(bookmark); setDialogOpen(true); }} onDelete={(ids) => void persist(deleteBookmarks(snapshot, ids, now()))} onMove={(ids, destination) => void persist(moveBookmarks(snapshot, ids, destination, now()))} onOpenSort={() => setDrawer('sort')} /> : null}
+      {drawer === 'bookmarks' ? <BookmarkManagerDrawer snapshot={snapshot} groupId={recentFallback ? ALL_BOOKMARKS : activeGroup} onEdit={(bookmark) => { setDrawer(null); setEditing(bookmark); setDialogOpen(true); }} onDelete={(ids) => void persist(deleteBookmarks(snapshot, ids, now()))} onMove={(ids, destination) => void persist(moveBookmarks(snapshot, ids, destination, now()))} onOpenSort={() => setDrawer('sort')} /> : null}
       {drawer === 'time' ? <TimeDrawer currentTime={currentTime} clockHour12={snapshot.settings.clockHour12} clockShowSeconds={snapshot.settings.clockShowSeconds} clockShowFullDate={snapshot.settings.clockShowFullDate} onChange={updateSettings} /> : null}
       {drawer === 'weather' ? <WeatherDrawer state={weather.state} client={services.weather} location={snapshot.settings.weatherLocation} selectedLocation={snapshot.settings.weatherLocation} unit={snapshot.settings.temperatureUnit} onLocationChange={(location) => updateSettings({ weatherLocation: location })} onUnitChange={(temperatureUnit) => updateSettings({ temperatureUnit })} onRefresh={() => weather.refresh({ force: true })} geolocation={services.geolocation} reverseGeocoder={services.reverseGeocoder} /> : null}
       {drawer === 'settings' ? <SettingsPanel snapshot={snapshot} onSearchTemplateChange={(searchTemplate) => updateSettings({ searchTemplate })} onSettingsChange={updateSettings} onImport={importData} onExport={() => services.download(exportSnapshot(snapshot), `day-start-${new Date(now()).toISOString().slice(0, 10)}.json`)} onReset={() => void reset()} /> : null}

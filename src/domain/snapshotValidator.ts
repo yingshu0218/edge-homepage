@@ -1,4 +1,4 @@
-import type { AppSettings, AppSnapshot, Bookmark, BookmarkGroup, WeatherLocation } from './models';
+import type { AppSettings, AppSnapshot, Bookmark, BookmarkGroup, BookmarkUsage, WeatherLocation } from './models';
 
 type Schema1Settings = Omit<AppSettings, 'bookmarkDisplayLimit' | 'clockHour12' | 'clockShowSeconds' | 'clockShowFullDate' | 'temperatureUnit' | 'weatherLocation'>;
 type Schema1Snapshot = {
@@ -29,8 +29,9 @@ function isGroup(value: unknown): value is BookmarkGroup {
     && (value.deletedAt === undefined || timestamp(value.deletedAt));
 }
 
-function isBookmark(value: unknown): value is Bookmark {
-  return isObject(value) && exactKeys(value, ['id', 'title', 'url', 'groupId', 'order', 'createdAt', 'updatedAt'], ['deletedAt', 'totalOpenCount', 'recentOpenTimestamps'])
+type LegacyBookmark = Bookmark & Partial<BookmarkUsage>;
+function isBookmark(value: unknown, legacy = false): value is LegacyBookmark {
+  return isObject(value) && exactKeys(value, ['id', 'title', 'url', 'groupId', 'order', 'createdAt', 'updatedAt'], legacy ? ['deletedAt', 'totalOpenCount', 'recentOpenTimestamps'] : ['deletedAt'])
     && nonEmpty(value.id) && nonEmpty(value.title) && safeHttpUrl(value.url) && nonEmpty(value.groupId) && order(value.order)
     && timestamp(value.createdAt) && timestamp(value.updatedAt)
     && (value.totalOpenCount === undefined || order(value.totalOpenCount))
@@ -77,9 +78,9 @@ export class SnapshotCorruptionError extends Error {
   }
 }
 
-function validatedRecords(value: unknown, source: string): { bookmarks: Bookmark[]; groups: BookmarkGroup[] } {
-  if (!isObject(value) || !exactKeys(value, ['schemaVersion', 'bookmarks', 'groups', 'settings']) || !Array.isArray(value.groups)
-    || !Array.isArray(value.bookmarks) || !value.groups.every(isGroup) || !value.bookmarks.every(isBookmark)) {
+function validatedRecords(value: unknown, source: string): { bookmarks: LegacyBookmark[]; groups: BookmarkGroup[] } {
+  if (!isObject(value) || !exactKeys(value, value.schemaVersion === 3 ? ['schemaVersion', 'bookmarks', 'groups', 'settings', 'bookmarkUsage'] : ['schemaVersion', 'bookmarks', 'groups', 'settings']) || !Array.isArray(value.groups)
+    || !Array.isArray(value.bookmarks) || !value.groups.every(isGroup) || !value.bookmarks.every((bookmark) => isBookmark(bookmark, value.schemaVersion !== 3))) {
     throw new SnapshotCorruptionError(source);
   }
   const groups = value.groups as BookmarkGroup[];
@@ -110,34 +111,44 @@ function validateSchema1(value: unknown, source: string): Schema1Snapshot {
   return { schemaVersion: 1, bookmarks, groups, settings: value.settings };
 }
 
-function validateSchema2(value: unknown, source: string): AppSnapshot {
+function validateCurrent(value: unknown, source: string): AppSnapshot {
   const { bookmarks, groups } = validatedRecords(value, source);
-  if (!isObject(value) || value.schemaVersion !== 2 || !isSchema2Settings(value.settings)) {
+  if (!isObject(value) || value.schemaVersion !== 3 || !isSchema2Settings(value.settings) || !isObject(value.bookmarkUsage)) {
     throw new SnapshotCorruptionError(source);
   }
-  return { schemaVersion: 2, bookmarks, groups, settings: value.settings };
+  const ids = new Set(bookmarks.map(({ id }) => id));
+  for (const [id, usage] of Object.entries(value.bookmarkUsage)) {
+    if (!ids.has(id) || !isObject(usage) || !exactKeys(usage, ['totalOpenCount', 'recentOpenTimestamps'])
+      || !Number.isSafeInteger(usage.totalOpenCount) || (usage.totalOpenCount as number) < 0
+      || !Array.isArray(usage.recentOpenTimestamps) || !usage.recentOpenTimestamps.every(timestamp)
+      || (usage.totalOpenCount as number) < usage.recentOpenTimestamps.length) throw new SnapshotCorruptionError(source, 'invalid local bookmark usage');
+  }
+  return { schemaVersion: 3, bookmarks, groups, settings: value.settings, bookmarkUsage: value.bookmarkUsage as Record<string, BookmarkUsage> };
 }
 
 export function migrateSnapshot(value: unknown, source: string): AppSnapshot {
-  if (!isObject(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) {
+  if (!isObject(value) || ![1, 2, 3].includes(value.schemaVersion as number)) {
     throw new SnapshotCorruptionError(source, `unsupported schema ${String(value && isObject(value) ? value.schemaVersion : undefined)}`);
   }
-  if (value.schemaVersion === 2) return validateSchema2(value, source);
-
-  const snapshot = validateSchema1(value, source);
-  return {
-    schemaVersion: 2,
-    bookmarks: snapshot.bookmarks,
-    groups: snapshot.groups,
-    settings: {
-      ...snapshot.settings,
+  if (value.schemaVersion === 3) return validateCurrent(value, source);
+  const { bookmarks: legacyBookmarks, groups } = validatedRecords(value, source);
+  const settings = value.schemaVersion === 1 ? {
+      ...validateSchema1(value, source).settings,
       bookmarkDisplayLimit: 8,
       clockHour12: false,
       clockShowSeconds: false,
       clockShowFullDate: true,
-      temperatureUnit: 'celsius',
-    },
-  };
+      temperatureUnit: 'celsius' as const,
+    } : value.settings;
+  if (!isSchema2Settings(settings)) throw new SnapshotCorruptionError(source);
+  const bookmarkUsage = Object.fromEntries(legacyBookmarks
+    .filter((bookmark) => bookmark.totalOpenCount !== undefined || bookmark.recentOpenTimestamps !== undefined)
+    .map(({ id, totalOpenCount, recentOpenTimestamps }) => [id, {
+      totalOpenCount: Math.max(totalOpenCount ?? 0, recentOpenTimestamps?.length ?? 0),
+      recentOpenTimestamps: [...(recentOpenTimestamps ?? [])],
+    }]));
+  const bookmarks = legacyBookmarks.map(({ totalOpenCount: _count, recentOpenTimestamps: _times, ...content }) => content);
+  return validateCurrent({ schemaVersion: 3, bookmarks, groups, settings, bookmarkUsage }, source);
 }
 
 export function validateSnapshot(value: unknown, source: string): AppSnapshot {

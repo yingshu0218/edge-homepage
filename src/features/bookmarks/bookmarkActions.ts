@@ -1,4 +1,4 @@
-import type { AppSnapshot, Bookmark, BookmarkGroup } from '../../domain/models';
+import type { AppSnapshot, Bookmark, BookmarkGroup, BookmarkUsage } from '../../domain/models';
 
 type NewBookmark = Pick<Bookmark, 'id' | 'title' | 'url' | 'groupId'> & { now?: number };
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1_000;
@@ -16,6 +16,26 @@ function normalizeGroupOrder(groups: BookmarkGroup[], now: number): BookmarkGrou
     ? { ...group, order: orders.get(group.id)!, updatedAt: now } : group);
 }
 
+export const RECENT_BOOKMARKS = 'view:recent';
+export const ALL_BOOKMARKS = 'view:all';
+export const BUILTIN_BOOKMARK_TABS = [
+  { id: RECENT_BOOKMARKS, name: '最近常用' },
+  { id: ALL_BOOKMARKS, name: '全部' },
+];
+
+export function selectBookmarks(snapshot: AppSnapshot, groupId: string, now = Date.now()): Bookmark[] {
+  if (groupId !== RECENT_BOOKMARKS && groupId !== ALL_BOOKMARKS) return filterBookmarksByGroup(snapshot, groupId);
+  const groups = snapshot.groups.filter(({ deletedAt }) => deletedAt === undefined).sort((a, b) => a.order - b.order);
+  const bookmarks = groups.flatMap(({ id }) => filterBookmarksByGroup(snapshot, id));
+  if (groupId === ALL_BOOKMARKS) return bookmarks;
+  return bookmarks.map((bookmark) => {
+    const timestamps = (snapshot.bookmarkUsage[bookmark.id]?.recentOpenTimestamps ?? []).filter((time) => time >= now - THIRTY_DAYS && time <= now);
+    return { bookmark, count: timestamps.length, last: timestamps.reduce((last, time) => Math.max(last, time), 0) };
+  }).filter(({ count }) => count > 0)
+    .sort((a, b) => b.count - a.count || b.last - a.last)
+    .map(({ bookmark }) => bookmark);
+}
+
 export function filterBookmarksByGroup(snapshot: AppSnapshot, groupId: string): Bookmark[] {
   return snapshot.bookmarks
     .filter((bookmark) => bookmark.groupId === groupId && bookmark.deletedAt === undefined)
@@ -24,7 +44,7 @@ export function filterBookmarksByGroup(snapshot: AppSnapshot, groupId: string): 
 
 export function searchBookmarks(snapshot: AppSnapshot, groupId: string, query: string): Bookmark[] {
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  return filterBookmarksByGroup(snapshot, groupId).filter(({ title, url }) => (
+  return selectBookmarks(snapshot, groupId).filter(({ title, url }) => (
     title.toLocaleLowerCase().includes(normalizedQuery) || url.toLocaleLowerCase().includes(normalizedQuery)
   ));
 }
@@ -87,31 +107,25 @@ export function addBookmark(snapshot: AppSnapshot, input: NewBookmark): AppSnaps
 }
 
 export function recordBookmarkOpen(snapshot: AppSnapshot, id: string, now = Date.now()): AppSnapshot {
+  if (!snapshot.bookmarks.some((bookmark) => bookmark.id === id && bookmark.deletedAt === undefined)) return snapshot;
+  const usage = snapshot.bookmarkUsage[id];
+  const recentOpenTimestamps = [...(usage?.recentOpenTimestamps ?? []), now]
+    .filter((timestamp) => timestamp >= now - THIRTY_DAYS && timestamp <= now)
+    .sort((left, right) => left - right);
   return {
     ...snapshot,
-    bookmarks: snapshot.bookmarks.map((bookmark) => {
-      if (bookmark.id !== id || bookmark.deletedAt !== undefined) return bookmark;
-      const recentOpenTimestamps = [...(bookmark.recentOpenTimestamps ?? []), now]
-        .filter((timestamp) => timestamp >= now - THIRTY_DAYS && timestamp <= now)
-        .sort((left, right) => left - right);
-      return {
-        ...bookmark,
-        totalOpenCount: (bookmark.totalOpenCount ?? 0) + 1,
-        recentOpenTimestamps,
-        updatedAt: now,
-      };
-    }),
+    bookmarkUsage: { ...snapshot.bookmarkUsage, [id]: { totalOpenCount: (usage?.totalOpenCount ?? 0) + 1, recentOpenTimestamps } },
   };
 }
 
-export function bookmarkOpenStats(bookmark: Bookmark, now = Date.now()) {
-  const timestamps = bookmark.recentOpenTimestamps ?? [];
+export function bookmarkOpenStats(usage: BookmarkUsage | undefined, now = Date.now()) {
+  const timestamps = usage?.recentOpenTimestamps ?? [];
   const countSince = (duration: number) => timestamps.filter((timestamp) => timestamp >= now - duration && timestamp <= now).length;
   return {
     day: countSince(24 * 60 * 60 * 1_000),
     week: countSince(7 * 24 * 60 * 60 * 1_000),
     month: countSince(THIRTY_DAYS),
-    total: bookmark.totalOpenCount ?? 0,
+    total: usage?.totalOpenCount ?? 0,
   };
 }
 

@@ -33,11 +33,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .workspace { width: min(1040px, 100%); margin: clamp(58px, 9vh, 110px) auto 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(240px, .75fr); gap: 28px; align-items: start; }
 .command-area h1 { margin: 0; font-size: clamp(40px, 5vw, 64px); line-height: 1.05; letter-spacing: -.05em; font-weight: 650; }
 .date-line { margin: 8px 0 25px; color: rgba(255,255,255,.62); font-size: 13px; }
-.command-area > form { position: relative; display: flex; align-items: center; padding: 7px 8px 7px 46px; border: 1px solid rgba(255,255,255,.23); border-radius: 17px; background: rgba(15,12,28,.56); backdrop-filter: blur(22px); box-shadow: 0 20px 55px rgba(5,3,12,.28); }
-.command-area > form::before { content: "⌘ K"; position: absolute; left: 16px; color: rgba(255,255,255,.5); font-size: 11px; }
+.command-area > form { position: relative; z-index: 2; display: flex; align-items: center; padding: 7px 8px 7px 46px; border: 1px solid rgba(255,255,255,.23); border-radius: 17px; background: rgba(15,12,28,.56); backdrop-filter: blur(22px); box-shadow: 0 20px 55px rgba(5,3,12,.28); }
+.command-area > form::before { content: "⌕"; position: absolute; left: 16px; color: rgba(255,255,255,.5); font-size: 11px; }
 .command-area > form input { flex: 1; min-width: 0; height: 40px; border: 0; outline: 0; background: transparent; color: inherit; font-size: 13px; }
 .command-area > form input::placeholder { color: rgba(255,255,255,.64); }
-.command-area > form button { border: 0; border-radius: 11px; padding: 9px 13px; background: rgba(255,255,255,.11); color: rgba(255,255,255,.8); font-size: 11px; cursor: pointer; }
+.command-area > form .search-submit { border: 0; border-radius: 11px; padding: 9px 13px; background: rgba(255,255,255,.11); color: rgba(255,255,255,.8); font-size: 11px; cursor: pointer; }
+/* Suggestions overlay the grid without changing the page layout. */
+.search-results { position: absolute; z-index: 10; top: calc(100% + 8px); left: 0; right: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.23); border-radius: 15px; background: #211d32; color: #f5f2fb; box-shadow: 0 20px 55px rgba(5,3,12,.4); }
+.search-results p { margin: 0; padding: 10px 14px; font-size: 11px; color: rgba(255,255,255,.68); }
+.search-results ul { max-height: min(380px, 50vh); overflow-y: auto; margin: 0; padding: 0 6px; list-style: none; }
+.search-results li { border-radius: 9px; }
+.search-results [aria-selected="true"] { background: rgba(255,255,255,.13); outline: 1px solid var(--theme-accent-color, #8ee7d0); outline-offset: -1px; }
+.search-results button { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 12px; padding: 10px; border: 0; border-radius: 9px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.search-results strong { font-size: 13px; }.search-results small { grid-column: 1; font-size: 11px; color: rgba(255,255,255,.65); }.search-results strong, .search-results small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.search-results span { grid-column: 2; grid-row: 1 / 3; align-self: center; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.search-results .search-hint { border-top: 1px solid rgba(255,255,255,.1); }.bookmark-feedback { font-size: 12px; line-height: 1.5; }
+[data-appearance="light"] .search-results { background: #f4f6fa; color: #182333; border-color: rgba(21,38,58,.2); }
+[data-appearance="light"] .search-results p, [data-appearance="light"] .search-results small { color: #526078; }
+[data-appearance="light"] .search-results [aria-selected="true"] { background: #dfe8ed; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; margin: 31px 2px 13px; font-size: 12px; }
 .section-heading > div { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.52); font-size: 10px; }
 .section-heading button { border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; }

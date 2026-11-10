@@ -8,6 +8,7 @@ type Props = {
   groups: BookmarkGroup[];
   searchTemplate: string;
   bookmark?: Bookmark;
+  defaultGroupId?: string;
   onSave: (value: BookmarkDialogValue) => void;
   onClose: () => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
@@ -15,7 +16,7 @@ type Props = {
 
 const focusableSelector = 'input:not([disabled]), select:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
-export function BookmarkDialog({ open, groups, searchTemplate, bookmark, onSave, onClose, returnFocusRef }: Props) {
+export function BookmarkDialog({ open, groups, searchTemplate, bookmark, defaultGroupId, onSave, onClose, returnFocusRef }: Props) {
   const availableGroups = groups.filter(({ deletedAt }) => deletedAt === undefined).sort((a, b) => a.order - b.order);
   const [title, setTitle] = useState(bookmark?.title ?? '');
   const [url, setUrl] = useState(bookmark?.url ?? '');
@@ -27,9 +28,9 @@ export function BookmarkDialog({ open, groups, searchTemplate, bookmark, onSave,
   useEffect(() => {
     setTitle(bookmark?.title ?? '');
     setUrl(bookmark?.url ?? '');
-    setGroupId(bookmark?.groupId ?? availableGroups[0]?.id ?? '');
+    setGroupId(bookmark?.groupId ?? availableGroups.find(({ id }) => id === defaultGroupId)?.id ?? availableGroups[0]?.id ?? '');
     setError('');
-  }, [bookmark, open]);
+  }, [bookmark, defaultGroupId, open]);
 
   useEffect(() => {
     if (!open) return;

@@ -5,7 +5,8 @@ const DEVELOPMENT_GROUP_ID = 'development';
 
 export function createDefaultSnapshot(): AppSnapshot {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    bookmarkUsage: {},
     groups: [
       {
         id: DEVELOPMENT_GROUP_ID,
