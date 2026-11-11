@@ -1,8 +1,8 @@
-# Edge 商店上传清单（Day Start 0.1.0）
+# Edge 商店上传清单（Day Start 0.1.1）
 
 ## 上传文件
 
-- 扩展包：`day-start-edge-0.1.0.zip`
+- 扩展包：`day-start-edge-0.1.1.zip`
 - 商店图标：`store-assets/day-start-logo-300.png`
 - 截图：`store-assets/screenshot-1-main-1280x800.png` 至 `screenshot-4-weather-1280x800.png`
 - 小型推广图：`store-assets/day-start-small-promo-440x280.png`
@@ -17,7 +17,7 @@
 5. **商店一览**：语言选择 `中文（简体）`，上传本清单列出的图标、截图和推广图；名称、简短说明、详细说明、搜索词和支持地址全部复制自 `docs/edge-store-listing-zh-CN.md`。
 6. **认证说明**：复制 `docs/edge-store-listing-zh-CN.md` 的“审核测试说明”。远程代码选择“否”。
 7. **保存草稿并预览**：检查图片未被裁切、说明准确区分内容同步和本机统计、支持与隐私链接可公开访问。
-8. **提交认证**：确认版本号为 `0.1.0` 后再提交。
+8. **提交认证**：确认版本号为 `0.1.1` 后再提交。
 
 ## 发布者最终确认
 
